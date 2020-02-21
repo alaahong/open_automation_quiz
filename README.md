@@ -3,12 +3,13 @@
 [![Code Quality Score](https://www.code-inspector.com/project/4050/score/svg)](https://www.code-inspector.com/project/4050/score/svg)
 
 ## 任务要求
-* 以下内容均基于Java进行考察  
-* 网页端内容需同时对Chrome和IE两种浏览器进行实现  
+* 请**Fork**本项目到您自己的Github账号下
+* 以下内容均基于**Java**进行考察  
+* 网页端内容需同时对**Chrome**和**IE**两种浏览器进行实现  
 * 手机端内容可以基于Android或iOS平台二选一  
 * 请尽量完成更多的任务，有余力的话可以针对**项目结构**和**代码质量**进行完善  
-* 请于完成后，将项目源码上传至候选者的Github，将项目设置为Public后提供项目链接 
-* 默认候选者提交的项目可以直接运行，若担心环境问题，可以将运行结果截图添加至项目资源文件内，并声明截图路径 
+* 请于完成后，将项目源码更新至候选者的Github，将项目设置为Public后提供项目链接 
+* 默认期望候选者提交的项目可以直接运行，若担心环境问题，可以将运行结果的截图添加至项目资源目录内，并声明截图路径 
 
 ******
 ## 1. 必应搜索(Selenium)  
@@ -33,7 +34,7 @@ bing.com  --> 2
 baidu.com  --> 1  
 ```
   ******
-## 2. 企业复工申请资料提交表  
+## 2. 企业复工申请资料提交表(Cucumber)    
 
 请基于**Cucumber**，以**BDD**的形式，自行实现所需的**Feature**和**Gherkin**，用于以下操作  
 打开网页 [**企业复工申请资料提交表**](https://templates.jinshuju.net/detail/Dv9JPD)  
@@ -69,7 +70,8 @@ baidu.com  --> 1
 测试完成后，应生成相应的**HTML**格式的**测试报告**  
   ******
   
-## 3. 手机APP
+## 3. 手机APP(Appium)  
+  
 请基于 **Appium**  完成任意一款APP的自动化测试，请附带可下载的测试APP样例链接  
 测试内容需包括以下操作  
 * 点击按钮
