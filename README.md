@@ -4,10 +4,6 @@
 
 ------
 
-[TOC]
-
-------
-
 ## 0. 任务要求
 
 * 请**Fork**本项目到您自己的Github账号下
@@ -21,7 +17,7 @@
 ******
 ## 1. 必应搜索(Selenium)  
 
-请使用[Selenium](https://github.com/SeleniumHQ/selenium)打开[**微软Bing搜索**](https://cn.bing.com/)，在搜索栏内输入关键词 "**Bing**" 并执行搜索操作，请基于搜索结果的**第二页**内容，请打印每个结果的标题以及链接，同时统计并打印每个顶级域名出现的次数。  
+请使用[Selenium](https://github.com/SeleniumHQ/selenium)打开[微软Bing搜索](https://cn.bing.com/)，在搜索栏内输入关键词 "**Bing**" 并执行搜索操作，请基于搜索结果的**第二页**内容，请打印每个结果的标题以及链接，同时统计并打印每个顶级域名出现的次数。  
 完成后请在上一步的搜索结果页，继续基于关键词 "**SC**" 执行同样的打印操作。
 
  例：若得到以下的搜索结果   
@@ -43,8 +39,8 @@ baidu.com  --> 1
 ******
 ## 2. 企业复工申请资料提交表(Cucumber)    
 
-请基于**[Cucumber](https://cucumber.io/)**，以**[BDD](https://cucumber.io/docs/bdd/)**的形式，自行实现所需的**[Feature](https://cucumber.io/docs/gherkin/reference/#feature)**和**[Gherkin](https://cucumber.io/docs/gherkin/)**，用于以下操作  
-打开网页 [**企业复工申请资料提交表**](https://templates.jinshuju.net/detail/Dv9JPD)  
+请基于[Cucumber](https://cucumber.io/)，以[BDD](https://cucumber.io/docs/bdd/)的形式，自行实现所需的[Feature](https://cucumber.io/docs/gherkin/reference/#feature)和[Gherkin](https://cucumber.io/docs/gherkin/)，用于以下操作  
+打开网页 [企业复工申请资料提交表](https://templates.jinshuju.net/detail/Dv9JPD)  
 请在第一页填写以下内容  
 “**请选择贵单位情况**”的选项组中选择 “**连续生产/开工类企事业单位**”  
 将**第一页**进行**截图**  
@@ -60,6 +56,7 @@ baidu.com  --> 1
 点击**下一页**按钮  
 将**第二页**进行**截图**  
 请在第三页填写以下内容  
+  
 | 栏位                                                     |      内容      |
 | :------------------------------------------------------- | :------------: |
 | 报备单位                                                 |    测试公司    |
@@ -75,12 +72,12 @@ baidu.com  --> 1
 判断**提交成功**  
 将**提交结果页**进行**截图**  
 
-测试完成后，应生成相应的**[HTML](https://cucumber.io/docs/cucumber/reporting/)**格式的**[测试报告](https://cucumber.io/docs/cucumber/reporting/#built-in-reporter-plugins)**  
+测试完成后，应生成相应的[HTML](https://cucumber.io/docs/cucumber/reporting/)格式的[测试报告](https://cucumber.io/docs/cucumber/reporting/#built-in-reporter-plugins)   
 ******
 
 ## 3. 手机APP(Appium)  
 
-请基于 **[Appium](http://appium.io/)**  完成任意一款APP的自动化测试，请附带可下载的测试APP样例链接  
+请基于 [Appium](http://appium.io/)  完成任意一款APP的自动化测试，请附带可下载的测试APP样例链接  
 测试内容需包括以下操作  
 
 * 点击按钮
