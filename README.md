@@ -6,7 +6,7 @@
 
 ## 0. 任务要求
 
-> **特别注意**：请于完成后，将项目源码更新至候选者的Github，在您项目的**Settings**页面，例如本项目为https://github.com/alaahong/open_automation_quiz/settings/access，将项目设置为**Private Repository**后, 于**Manage access**邀请**alaahong**作为协作者 
+> **特别注意**：请于完成后，将项目源码更新至候选者的Github，在您项目的**Settings**页面，例如本项目为https://github.com/alaahong/open_automation_quiz/settings/access ，将项目设置为**Private Repository**后, 于**Manage access**邀请**alaahong**作为协作者 
 
 * 请**Fork**本项目到您自己的Github账号下
 * 以下内容均基于**Java**进行考察  
