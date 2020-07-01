@@ -7,22 +7,27 @@
 ## 0. 任务要求
 
 > **特别注意**：请于完成后，将项目源码更新至候选者您本人的Github，在您项目的**Settings**页面，例如本项目为此[链接](https://github.com/alaahong/open_automation_quiz/settings/access) ，将您的项目设置为**Private Repository**以免借阅, 并于**Manage access**邀请**alaahong**作为协作者(collaborator)后，发起[issue](https://github.com/alaahong/open_automation_quiz/issues)声明您的项目链接，并最终反馈给HR/Vendor/猎头等渠道 
-
+### 基本要求
 * 请**Fork**本项目到您自己的Github账号下
 * 以下内容均基于**Java**进行考察，并同时涉及到了Git, Maven, Selenium, Cucumber 和 Appium等技术  
 * 网页端内容需同时对**Chrome**和**IE**两种浏览器进行实现  
 * 手机端内容可以基于Android或iOS平台二选一  
 * 若担心环境问题，可以将运行结果的截图添加至项目资源目录内，并声明截图路径 
 
-希望，我们可以遇到这样的您：
+### 加分项
+希望，我们可以遇到这样的您
 * 认真理解题目的要求，若有不明确的地方，可以直接提[issue](https://github.com/alaahong/open_automation_quiz/issues)沟通 或 通过HR/Vendor/猎头等反馈
 * 思路清晰，代码规范，尽量完成了更多的任务，针对**项目结构**和**代码质量**进行了完善  
 * 尽量提交可以直接运行的项目，至少也应该是可以通过**Maven**构建的 [![Build Status](https://github.com/alaahong/open_automation_quiz/workflows/CI/badge.svg)](https://github.com/alaahong/open_automation_quiz)
 * 提交一个规范的Java项目，符合标准的项目结构，根据需求引入必要的依赖并解决冲突，创建必要的文件和配置
 * 项目不依赖于特定的IDE，可以通过命令行或者接口的形式被调用，以便于测试平台或框架级别的引用
+* 允许锦上添花，额外增加体现个人情况的功能，但是未达成题目要求直接自行发挥的，判定失败
 
 > 以下任务内容均来源于基本的日常需求，请您反馈项目前认真思考，是否适应并胜任，比这些任务更加复杂的日常工作
 
+### 校验方式
+项目根目录下执行以下命令后，查看即时生成的测试结果及报告
+> mvn test
 
 ******
 ## 1. 搜索统计(Selenium)  
