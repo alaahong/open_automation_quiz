@@ -10,7 +10,7 @@
 ### 基本要求
 * 请**Fork**本项目到您自己的Github账号下
 * 以下内容均基于**Java**进行考察，并同时涉及到了Git, Maven, Selenium, Cucumber 和 Appium等技术  
-* 第一题Selenium和第二题Cucumber必做，第三题Appium可以选做。
+* 第一题Selenium和第二题Cucumber必做，第三题Appium视为加分项可以选做
 * 网页端内容需同时对**Chrome**和**IE**两种浏览器进行实现  
 * 手机端内容可以基于Android或iOS平台二选一  
 * 若担心环境问题，可以将运行结果的截图添加至项目资源目录内，并声明截图路径 
