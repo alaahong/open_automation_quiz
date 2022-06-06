@@ -8,10 +8,10 @@
 
 > **特别注意**：请于完成后，将项目源码更新至候选者您本人的Github，在您项目的**Settings**页面，例如本项目为此[链接](https://github.com/alaahong/open_automation_quiz/settings/access) ，将您的项目设置为**Private Repository**以免借阅, 并于**Manage access**邀请**alaahong**作为协作者(collaborator)后，发起[issue](https://github.com/alaahong/open_automation_quiz/issues)声明您的项目链接，并最终反馈给HR/Vendor/猎头等渠道 
 ### 基本要求
-* 请**Fork**本项目到您自己的Github账号下
+* 请**Fork**本项目到您自己的Github账号下 (本项目已关联Github Actions, 会自动编译检测Fork项目提交质量)
 * 以下内容均基于**Java**进行考察，并同时涉及到了Git, Maven, Selenium, Cucumber 和 Appium等技术  
 * 第一题Selenium和第二题Cucumber必做，第三题Appium视为加分项可以选做
-* 网页端内容需同时对**Chrome**和**IE**两种浏览器进行实现  
+* 网页端内容需同时对[Chrome](https://www.google.cn/intl/zh-CN/chrome/)和[Microsoft Edge (IE Mode)](https://www.microsoft.com/zh-cn/edge/business/ie-mode)两种浏览器进行实现  
 * 手机端内容可以基于Android或iOS平台二选一  
 * 若担心环境问题，可以将运行结果的截图添加至项目资源目录内，并声明截图路径 
 * 允许锦上添花，额外增加体现个人情况的功能，但是无视题目要求自行发挥的，直接判定失败
@@ -33,8 +33,8 @@
 ******
 ## 1. 搜索统计(Selenium)  
 
-请使用[Selenium](https://github.com/SeleniumHQ/selenium)打开[测试网站](http://www.ianzhang.cn/bing/)，在搜索栏内输入关键词 "**Bing**" 并执行搜索操作，请基于搜索结果的**第二页**内容，请打印每个结果的标题以及链接，同时统计并打印每个**顶级域名**出现的次数。  
-完成后请在上一步的搜索结果页，继续基于关键词 "**SC**" 执行同样的打印操作。
+请使用[Selenium](https://github.com/SeleniumHQ/selenium)打开[测试网站](https://www.ianzhang.cn/bing/)，在搜索栏内输入关键词 "**您的姓名**" 并执行搜索操作，请基于搜索结果的**第二页**内容，请打印每个结果的标题以及链接，同时统计并打印每个**顶级域名**出现的次数。  
+完成后请在上一步的搜索结果页，继续基于关键词 "**Selenium**" 执行同样的打印操作。
 
  例：若得到以下的搜索结果   
  [Bing Translator](www.bing.com/Translator)   
@@ -79,7 +79,7 @@ baidu.com  --> 1
 | 在岗人数                                                 |       99       |
 | 报备日期                                                 | 执行测试的日期 |
 | 湖北籍员工、前往湖北以及与湖北人员密切接触的员工（人数） |       0        |
-| 单位负责人                                               |      CEO       |
+| 单位负责人                                               |      您的姓名       |
 | 联系方式                                                 |  13888888888   |
 | 疫情防控方案                                             |    测试内容    |
 
