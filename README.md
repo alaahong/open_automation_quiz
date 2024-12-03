@@ -14,7 +14,7 @@
 * 请**Fork**本项目到您自己的Github账号下 (本项目已关联Github Actions, 会自动编译检测Fork项目提交质量)
 * 以下内容均基于**Java**进行考察，并同时涉及到了Git, Maven, Selenium, Cucumber 和 Appium等技术
 * 第一题Selenium和第二题Cucumber必做，第三题Appium视为加分项可以选做
-* 网页端内容需同时对[Chrome](https://www.google.cn/intl/zh-CN/chrome/)和[Microsoft Edge (IE Mode)](https://www.microsoft.com/zh-cn/edge/business/ie-mode)两种浏览器进行实现
+* 网页端内容需对[Chrome](https://www.google.cn/intl/zh-CN/chrome/)浏览器进行实现,有余力的同学可以考虑实现基于[Microsoft Edge (IE Mode)](https://www.microsoft.com/zh-cn/edge/business/ie-mode)的方案
 * 手机端内容可以基于Android或iOS平台二选一
 * 若担心环境问题，可以将运行结果的截图添加至项目资源目录内，并声明截图路径
 * 允许锦上添花，额外增加体现个人情况的功能，但是无视题目要求自行发挥的，直接判定失败
