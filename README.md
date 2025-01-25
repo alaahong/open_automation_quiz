@@ -41,12 +41,12 @@
 
 ## 1. 搜索统计(Selenium)
 
-请使用[Selenium](https://github.com/SeleniumHQ/selenium)打开[测试网站](https://www.ianzhang.cn/bing/)，在搜索栏内输入关键词 "**您的姓名**" 并执行搜索操作，请基于搜索结果的**第二页**内容，请打印每个结果的标题以及链接，同时统计并打印每个**顶级域名**出现的次数。
+请使用[Selenium](https://github.com/SeleniumHQ/selenium)打开[测试网站](https://www.ianzhang.cn/bing/)，在搜索栏内输入关键词 "**您的姓名**" 并执行搜索操作，请基于搜索结果的**第二页**内容，请打印每个结果的标题以及链接，同时统计并打印每个**二级域名**出现的次数。
 完成后请在上一步的搜索结果页，继续基于关键词 "**Selenium**" 执行同样的打印操作。
 
 例：若得到以下的搜索结果
-[Bing Translator](www.bing.com/Translator)
-[Bing](https://cn.bing.com/?setmkt=de-de&setlang=de-de)
+[Bing Translator](https://www.bing.com/Translator) 、
+[Bing](https://cn.bing.com/?setmkt=de-de&setlang=de-de) 、
 [bing（搜索引擎）_百度百科](https://baike.baidu.com/item/bing/5994319)
 
 则应输出
