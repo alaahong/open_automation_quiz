@@ -5,7 +5,10 @@ import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
+import org.openqa.selenium.support.ui.ExpectedConditions;
+import org.openqa.selenium.support.ui.WebDriverWait;
 
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -20,14 +23,19 @@ public class BingSearch {
         System.setProperty("webdriver.chrome.driver", "src/main/resources/chromedriver.exe");
         WebDriver driver = new ChromeDriver(options);
 
-        // 打开 bing 搜索页面
-        driver.get("https://cn.bing.com/");
+        //打开页面处理弹窗
+        driver.get("https://www.ianzhang.cn/bing/");
+        driver.switchTo().alert().accept();
+        //选择bing iframe
+        driver.switchTo().frame("bing");
+        WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
+        wait.until(ExpectedConditions.presenceOfElementLocated(By.xpath("//input[@id='kw']")));
 
         // 在搜索框中输入姓名并搜索
-        WebElement searchBox = driver.findElement(By.id("sb_form_q"));
+        WebElement searchBox = driver.findElement(By.xpath("//input[@id='kw']"));
         searchBox.sendKeys("verna");
 
-        WebElement searchButton = driver.findElement(By.id("search_icon"));
+        WebElement searchButton = driver.findElement(By.xpath("//input[@type='submit']"));
         searchButton.click();
 
         // 导航到搜索结果的第二页
@@ -37,12 +45,9 @@ public class BingSearch {
         processSearchResults(driver);
 
         // 在当前搜索结果页继续搜索 "Selenium"
-        searchBox = driver.findElement(By.id("sb_form_q"));
         searchBox.clear();
         searchBox.sendKeys("Selenium");
-        searchButton = driver.findElement(By.id("sb_form_go"));
         searchButton.click();
-
 
         // 导航到搜索结果的第二页
         navigateToSecond(driver);
@@ -55,10 +60,12 @@ public class BingSearch {
     }
 
     public static void navigateToSecond(WebDriver driver) throws InterruptedException {
+        Thread.sleep(3000);
         JavascriptExecutor js = (JavascriptExecutor) driver;
         js.executeScript("window.scrollTo(0, document.body.scrollHeight);");
-        Thread.sleep(3000);
-        driver.findElement(By.xpath("//a[@aria-label='第 2 页']")).click();
+        WebDriverWait wait = new WebDriverWait(driver,Duration.ofSeconds(10));
+        wait.until(ExpectedConditions.presenceOfElementLocated(By.xpath("//span[@class='page-item_M4MDr pc' and text()=2]")));
+        driver.findElement(By.xpath("//span[@class='page-item_M4MDr pc' and text()=2]")).click();
     }
 
     public static void processSearchResults(WebDriver driver) {
@@ -66,7 +73,7 @@ public class BingSearch {
         // 定义Map存储每个顶级域名出现的次数
         Map<String, Integer> domainCount = new HashMap<>();
         // 获取搜索结果的链接元素
-        List<WebElement> resultLinks = driver.findElements(By.cssSelector("li.b_algo h2 a"));
+        List<WebElement> resultLinks = driver.findElements(By.cssSelector("div h3 a"));
         for (WebElement link : resultLinks) {
             String title = link.getText();
             String url = link.getAttribute("href");
@@ -86,10 +93,10 @@ public class BingSearch {
 
     public static String getDomain(String url) {
         // 定义正则表达式来匹配顶级域名
-        Pattern pattern = Pattern.compile("^(?:https?://)?(?:www\\.)?([^/?#]+)");
+        Pattern pattern = Pattern.compile("^(?:https?://)?([^/?#]+)");
         Matcher matcher = pattern.matcher(url);
         if (matcher.find()) {
-            return matcher.group(1);
+            return matcher.group(1).split("\\.",2)[1];
         }
         return null;
     }
