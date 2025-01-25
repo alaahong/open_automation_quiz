@@ -96,7 +96,8 @@ public class BingSearch {
         Pattern pattern = Pattern.compile("^(?:https?://)?([^/?#]+)");
         Matcher matcher = pattern.matcher(url);
         if (matcher.find()) {
-            return matcher.group(1).split("\\.",2)[1];
+            String[] str= matcher.group(1).split("\\.");
+            return "."+str[str.length-1];
         }
         return null;
     }
