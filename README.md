@@ -1,7 +1,6 @@
 # Open Automation Quiz
 
-[![Build Status](https://github.com/alaahong/open_automation_quiz/workflows/CI/badge.svg)](https://github.com/alaahong/open_automation_quiz)
-[![Code Quality Score](https://www.code-inspector.com/project/4050/score/svg)](https://www.code-inspector.com/project/4050/score/svg)
+![Build Status](https://github.com/alaahong/open_automation_quiz/workflows/CI/badge.svg)
 
 ---
 
