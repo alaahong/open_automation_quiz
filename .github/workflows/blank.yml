@@ -6,7 +6,7 @@ jobs:
     runs-on: ${{ matrix.operating-system }}
     strategy:
       matrix:
-        java-version: [1.8]
+        java-version: [17]
         operating-system: [ubuntu-latest]
     steps:
       - name: Prepare
