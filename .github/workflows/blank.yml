@@ -42,9 +42,9 @@ jobs:
         if: ${{ success() }}
         uses: SonarSource/sonarcloud-github-action@v2
         with:
-    entryPoint: 'sonar-scanner'
-    args: >
-        -Dsonar.projectKey=alaahong_open_automation_quiz
-        -Dsonar.organization=alaahong
-        -Dsonar.host.url=https://sonarcloud.io
-        -Dsonar.login=${{ secrets.SONAR_TOKEN }}
+          entryPoint: 'sonar-scanner'
+          args: >
+            -Dsonar.projectKey=alaahong_open_automation_quiz
+            -Dsonar.organization=alaahong
+            -Dsonar.host.url=https://sonarcloud.io
+            -Dsonar.login=${{ secrets.SONAR_TOKEN }}
