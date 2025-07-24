@@ -15,5 +15,13 @@ class AutomationApplicationTest {
             );
         }
     }
-}
 
+    @Test
+    void testMainMethodWithArgs() {
+        try (MockedStatic<SpringApplication> mockedSpringApplication = Mockito.mockStatic(SpringApplication.class)) {
+            String[] args = {"test"};
+            AutomationApplication.main(args);
+            mockedSpringApplication.verify(() -> SpringApplication.run(AutomationApplication.class, args));
+        }
+    }
+}
