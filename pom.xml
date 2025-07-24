@@ -95,14 +95,6 @@
                             <goal>report</goal>
                         </goals>
                     </execution>
-                    <!-- generate aggregate report -->
-                    <execution>
-                        <id>generate-aggregate-report</id>
-                        <phase>test</phase>
-                        <goals>
-                            <goal>report-aggregate</goal>
-                        </goals>
-                    </execution>
                 </executions>
             </plugin>
         </plugins>
