@@ -6,15 +6,17 @@ jobs:
     runs-on: ${{ matrix.operating-system }}
     strategy:
       matrix:
-        java-version: [17]
+        java-version: [21]
         operating-system: [ubuntu-latest]
+        distribution: [ 'adopt' ]
     steps:
       - name: Prepare
-        uses: actions/checkout@v1
+        uses: actions/checkout@v4
       - name: Set Up Java Development Kit
-        uses: actions/setup-java@v1
+        uses: actions/setup-java@v4
         with:
           java-version: ${{ matrix.java-version }}
+          distribution: ${{ matrix.distribution }}
       - name: Maven build clean, build, test and install
         run: |
           mvn clean install -Dmaven.test.skip=true
