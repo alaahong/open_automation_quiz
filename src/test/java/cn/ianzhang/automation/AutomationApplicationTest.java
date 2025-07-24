@@ -5,6 +5,8 @@ import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.springframework.boot.SpringApplication;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+
 class AutomationApplicationTest {
     @Test
     void testMainMethod() {
@@ -23,5 +25,12 @@ class AutomationApplicationTest {
             AutomationApplication.main(args);
             mockedSpringApplication.verify(() -> SpringApplication.run(AutomationApplication.class, args));
         }
+    }
+
+    @Test
+    void testClassInitialization() {
+        assertDoesNotThrow(() -> {
+            new AutomationApplication();
+        });
     }
 }
