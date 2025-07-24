@@ -1,6 +1,7 @@
 # Open Automation Quiz
 
 ![Build Status](https://github.com/alaahong/open_automation_quiz/workflows/CI/badge.svg)
+[![codecov](https://codecov.io/github/alaahong/open_automation_quiz/graph/badge.svg?token=GEBB7Z1AZK)](https://codecov.io/github/alaahong/open_automation_quiz)
 
 ---
 
