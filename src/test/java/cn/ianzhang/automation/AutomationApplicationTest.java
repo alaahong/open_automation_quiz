@@ -10,7 +10,7 @@ class AutomationApplicationTest {
     void testMainMethod() {
         try (MockedStatic<SpringApplication> mockedSpringApplication = Mockito.mockStatic(SpringApplication.class)) {
             AutomationApplication.main(new String[]{});
-            mockedSpringApplication.verify(() -> SpringApplication.run(AutomationApplication.class, new String[]{}));
+            mockedSpringApplication.verify(() -> new SpringApplication().run(AutomationApplication.class, new String[]{}));
         }
     }
 }
