@@ -38,3 +38,10 @@ jobs:
           files: "target/site/jacoco/jacoco.xml"
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      - name: SonarCloud Scan
+        if: ${{ success() }}
+        uses: SonarSource/sonarcloud-github-action@v2
+        with:
+          projectKey: open_automation_quiz
+          organization: alaahong
+          token: ${{ secrets.SONAR_TOKEN }}
