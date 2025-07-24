@@ -23,7 +23,7 @@ jobs:
           mvn test
       - name: Publish Unit Test Results
         uses: EnricoMi/publish-unit-test-result-action@v2
-        if: (!cancelled())
+        if: ${{ success() }}
         with:
           files: "**/target/surefire-reports/*.xml"
       - name: Upload test results to Codecov
