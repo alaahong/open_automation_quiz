@@ -42,6 +42,6 @@ jobs:
         if: ${{ success() }}
         uses: SonarSource/sonarcloud-github-action@v2
         with:
-          projectKey: open_automation_quiz
+          projectKey: alaahong_open_automation_quiz
           organization: alaahong
           token: ${{ secrets.SONAR_TOKEN }}
