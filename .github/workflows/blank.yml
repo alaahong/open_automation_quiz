@@ -8,7 +8,7 @@ jobs:
       matrix:
         java-version: [21]
         operating-system: [ubuntu-latest]
-        distribution: [ 'adopt' ]
+        distribution: [ 'temurin' ]
     steps:
       - name: Prepare
         uses: actions/checkout@v4
