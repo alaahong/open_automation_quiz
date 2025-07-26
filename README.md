@@ -1,6 +1,7 @@
 # Open Automation Quiz
 
-![Build Status](https://github.com/alaahong/open_automation_quiz/workflows/CI/badge.svg)
+![CI Build](https://github.com/alaahong/open_automation_quiz/workflows/CI/badge.svg)
+![Nightly Build](https://github.com/<你的用户名>/<仓库名>/actions/workflows/nightly.yml/badge.svg)
 [![codecov](https://codecov.io/github/alaahong/open_automation_quiz/graph/badge.svg?token=GEBB7Z1AZK)](https://codecov.io/github/alaahong/open_automation_quiz)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=alaahong_open_automation_quiz&metric=coverage)](https://sonarcloud.io/summary/new_code?id=alaahong_open_automation_quiz)
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=alaahong_open_automation_quiz&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=alaahong_open_automation_quiz)
