@@ -128,44 +128,46 @@ jobs:
                   return True
               
               def check_file(self, file_path: str) -> List[Tuple[int, str, str]]:
-                  """检查单个文件，返回问题行列表 / Check single file, return list of issue lines"""
+                  """检查单个文件，按段落最后一句检查终止符 / Check single file, only check last sentence of each paragraph"""
                   issues = []
-                  
                   try:
                       with open(file_path, 'r', encoding='utf-8') as f:
                           lines = f.readlines()
-                      
                       in_code_block = False
-                      
+                      paragraph = []
+                      paragraph_start_line = 1
                       for line_num, line in enumerate(lines, 1):
                           # 检查代码块状态 / Check code block status
                           if re.match(r'^\s*```', line):
                               in_code_block = not in_code_block
                               continue
-                          
-                          # 跳过代码块内的内容 / Skip content inside code blocks
                           if in_code_block:
                               continue
-                          
-                          # 跳过不需要检查的行 / Skip lines that don't need checking
+                          # 段落分隔符：空行、标题、表格、列表、HTML标签等
+                          is_split = False
                           if self.is_skip_line(line):
+                              is_split = True
+                          if is_split or line.strip() == '':
+                              if paragraph:
+                                  # 检查段落最后一句
+                                  last_line = paragraph[-1]
+                                  last_line_num = paragraph_start_line + len(paragraph) - 1
+                                  if not self.is_special_content(last_line) and self.is_meaningful_content(last_line):
+                                      if not self.has_proper_ending(last_line):
+                                          issues.append((last_line_num, last_line.rstrip(), "缺少终止符号 / Missing punctuation"))
+                                  paragraph = []
+                              paragraph_start_line = line_num + 1
                               continue
-                          
-                          # 跳过特殊内容 / Skip special content
-                          if self.is_special_content(line):
-                              continue
-                          
-                          # 只检查有意义的正文内容 / Only check meaningful content
-                          if not self.is_meaningful_content(line):
-                              continue
-                          
-                          # 检查是否有适当的结尾 / Check for proper ending
-                          if not self.has_proper_ending(line):
-                              issues.append((line_num, line.rstrip(), "缺少终止符号 / Missing punctuation"))
-                  
+                          paragraph.append(line)
+                      # 检查最后一个段落
+                      if paragraph:
+                          last_line = paragraph[-1]
+                          last_line_num = paragraph_start_line + len(paragraph) - 1
+                          if not self.is_special_content(last_line) and self.is_meaningful_content(last_line):
+                              if not self.has_proper_ending(last_line):
+                                  issues.append((last_line_num, last_line.rstrip(), "缺少终止符号 / Missing punctuation"))
                   except Exception as e:
                       issues.append((0, "", f"文件读取错误 / File read error: {str(e)}"))
-                  
                   return issues
               
               def check_directory(self, directory: str = ".") -> Dict[str, List]:
