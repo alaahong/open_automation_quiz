@@ -1,0 +1,327 @@
+name: Markdown Format Check
+
+on:
+  pull_request:
+    paths:
+      - '**/*.md'
+    branches: [ main, master]
+  push:
+    paths:
+      - '**/*.md'
+    branches: [ main, master ]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  markdown-format-check:
+    name: 检查Markdown文件格式
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置Python环境
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: 创建Markdown格式检查脚本
+        run: |
+          cat > check_markdown_format.py << 'EOF'
+          #!/usr/bin/env python3
+          # -*- coding: utf-8 -*-
+          """
+          Markdown文件格式检查工具 / Markdown Format Checker
+          检查每一行正文是否以适当的终止符号结尾 / Check if each content line ends with proper punctuation
+          """
+          
+          import os
+          import re
+          import sys
+          from pathlib import Path
+          from typing import List, Tuple, Dict
+          
+          class MarkdownFormatChecker:
+              def __init__(self):
+                  # 定义终止符号 / Define punctuation endings
+                  self.sentence_endings = {
+                      '。', '.', '!', '！', '?', '？', ':', '：', ';', '；',
+                      ')', '）', '}', '}', ']', '】', '>', '》', '"', '"', 
+                      "'", '`', '…', '——', '-', '~', '～'
+                  }
+                  
+                  # 定义不需要终止符的行类型 / Define line types that don't need punctuation
+                  self.skip_patterns = [
+                      r'^\s*$',                    # 空行 / Empty lines
+                      r'^\s*#',                    # 标题行 / Header lines
+                      r'^\s*-\s*$',               # 只有破折号的行 / Lines with only dash
+                      r'^\s*\*\s*$',              # 只有星号的行 / Lines with only asterisk
+                      r'^\s*```',                  # 代码块开始/结束 / Code block start/end
+                      r'^\s*\|',                   # 表格行 / Table rows
+                      r'^\s*<[^>]+>\s*$',         # HTML标签行 / HTML tag lines
+                      r'^\s*!\[.*\]\(.*\)\s*$',   # 图片链接行 / Image link lines
+                      r'^\s*\[.*\]:\s*https?://', # 链接定义行 / Link definition lines
+                      r'^\s*>\s*$',               # 空的引用行 / Empty quote lines
+                      r'^\s*\d+\.\s*$',           # 只有数字的有序列表 / Numbered list with only numbers
+                      r'^\s*[-*+]\s*$',           # 空的无序列表项 / Empty unordered list items
+                      r'^\s*<p align=',           # HTML段落对齐 / HTML paragraph alignment
+                      r'^\s*<img\s',              # HTML图片标签 / HTML image tags
+                      r'^\s*<a\s',                # HTML链接标签 / HTML anchor tags
+                      r'^\s*</?(div|p|span)',     # HTML div/p/span标签 / HTML div/p/span tags
+                  ]
+                  
+                  # 定义特殊情况：这些内容后面可以不需要终止符 / Special cases that don't need punctuation
+                  self.special_content_patterns = [
+                      r'https?://[^\s<>]+$',       # 以URL结尾 / Ends with URL
+                      r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',  # 以邮箱结尾 / Ends with email
+                      r'```\w*\s*$',               # 代码块语言标识 / Code block language identifier
+                      r'^\s*\d+\)\s*[^.。!！?？:：;；]*$',  # 数字列表项（内容不完整） / Numbered list items (incomplete content)
+                      r'^\s*[-*+]\s*[^.。!！?？:：;；]*$',  # 符号列表项（内容不完整） / Bullet list items (incomplete content)
+                      r'^#+\s*[^.。!！?？:：;；]*$',       # 标题（一般不需要终止符） / Headers (usually don't need punctuation)
+                      r'^\s*\*\*.*\*\*\s*$',      # 粗体强调行 / Bold emphasis line
+                      r'^\s*\*.*\*\s*$'             # 斜体强调行 / Italic emphasis line
+                  ]
+          
+              def is_skip_line(self, line: str) -> bool:
+                  """判断是否应该跳过检查的行 / Check if line should be skipped"""
+                  for pattern in self.skip_patterns:
+                      if re.match(pattern, line):
+                          return True
+                  return False
+              
+              def is_special_content(self, line: str) -> bool:
+                  """判断是否是特殊内容（可以不需要终止符） / Check if it's special content (may not need punctuation)"""
+                  for pattern in self.special_content_patterns:
+                      if re.search(pattern, line):
+                          return True
+                  return False
+              
+              def has_proper_ending(self, line: str) -> bool:
+                  """检查行是否以适当的终止符结尾 / Check if line ends with proper punctuation"""
+                  # 移除行尾空白字符 / Remove trailing whitespace
+                  line = line.rstrip()
+                  if not line:
+                      return True
+                  
+                  # 检查是否以终止符结尾 / Check if ends with punctuation
+                  return any(line.endswith(ending) for ending in self.sentence_endings)
+              
+              def is_meaningful_content(self, line: str) -> bool:
+                  """判断是否是有意义的正文内容 / Check if it's meaningful content"""
+                  line = line.strip()
+                  
+                  # 空行或只有空白字符 / Empty or whitespace-only lines
+                  if not line:
+                      return False
+                  
+                  # 只有标点符号 / Only punctuation
+                  if re.match(r'^[^\w\u4e00-\u9fff]+$', line):
+                      return False
+                  
+                  # 内容太短（少于3个字符，可能是标记） / Too short (less than 3 chars, likely markup)
+                  if len(line) < 3:
+                      return False
+                  
+                  return True
+              
+              def check_file(self, file_path: str) -> List[Tuple[int, str, str]]:
+                  """检查单个文件，按段落最后一句检查终止符 / Check single file, only check last sentence of each paragraph"""
+                  issues = []
+                  try:
+                      with open(file_path, 'r', encoding='utf-8') as f:
+                          lines = f.readlines()
+                      in_code_block = False
+                      paragraph = []
+                      paragraph_start_line = 1
+                      for line_num, line in enumerate(lines, 1):
+                          # 检查代码块状态 / Check code block status
+                          if re.match(r'^\s*```', line):
+                              in_code_block = not in_code_block
+                              continue
+                          if in_code_block:
+                              continue
+                          # 段落分隔符：空行、标题、表格、列表、HTML标签等
+                          is_split = False
+                          if self.is_skip_line(line):
+                              is_split = True
+                          if is_split or line.strip() == '':
+                              if paragraph:
+                                  # 检查段落最后一句
+                                  last_line = paragraph[-1]
+                                  last_line_num = paragraph_start_line + len(paragraph) - 1
+                                  if not self.is_special_content(last_line) and self.is_meaningful_content(last_line):
+                                      if not self.has_proper_ending(last_line):
+                                          issues.append((last_line_num, last_line.rstrip(), "缺少终止符号 / Missing punctuation"))
+                                  paragraph = []
+                              paragraph_start_line = line_num + 1
+                              continue
+                          paragraph.append(line)
+                      # 检查最后一个段落
+                      if paragraph:
+                          last_line = paragraph[-1]
+                          last_line_num = paragraph_start_line + len(paragraph) - 1
+                          if not self.is_special_content(last_line) and self.is_meaningful_content(last_line):
+                              if not self.has_proper_ending(last_line):
+                                  issues.append((last_line_num, last_line.rstrip(), "缺少终止符号 / Missing punctuation"))
+                  except Exception as e:
+                      issues.append((0, "", f"文件读取错误 / File read error: {str(e)}"))
+                  return issues
+              
+              def check_directory(self, directory: str = ".") -> Dict[str, List]:
+                  """检查目录下所有Markdown文件 / Check all Markdown files in directory"""
+                  results = {}
+                  
+                  for file_path in Path(directory).rglob("*.md"):
+                      if file_path.is_file():
+                          issues = self.check_file(str(file_path))
+                          if issues:
+                              results[str(file_path)] = issues
+                  
+                  return results
+              
+              def generate_report(self, results: Dict[str, List]) -> str:
+                  """生成检查报告 / Generate check report"""
+                  if not results:
+                      return "✅ 所有Markdown文件格式检查通过！/ All Markdown files passed format check!"
+                  
+                  report = ["# 📝 Markdown格式检查报告 / Markdown Format Check Report\n"]
+                  
+                  total_issues = sum(len(issues) for issues in results.values())
+                  report.append(f"**发现问题 / Issues Found:** {total_issues} 处 / items")
+                  report.append(f"**涉及文件 / Files Affected:** {len(results)} 个 / files\n")
+                  
+                  for file_path, issues in results.items():
+                      report.append(f"## 📄 {file_path}")
+                      report.append(f"**问题数量 / Issue Count:** {len(issues)}\n")
+                      
+                      for line_num, line_content, issue_type in issues:
+                          if line_num == 0:  # 文件错误 / File error
+                              report.append(f"❌ **文件错误 / File Error:** {issue_type}")
+                          else:
+                              report.append(f"❌ **第{line_num}行 / Line {line_num}:** {issue_type}")
+                              report.append(f"   内容 / Content: `{line_content}`")
+                      
+                      report.append("")
+                  
+                  # 添加修复建议 / Add fix suggestions
+                  report.extend([
+                      "## 💡 修复建议 / Fix Suggestions",
+                      "",
+                      "请在以下情况的行尾添加适当的终止符号： / Please add proper punctuation at the end of lines in these cases:",
+                      "- 句子结尾使用句号 (。) 或 (.) / Use periods (。) or (.) at the end of sentences",
+                      "- 疑问句使用问号 (？) 或 (?) / Use question marks (？) or (?) for questions",
+                      "- 感叹句使用感叹号 (！) 或 (!) / Use exclamation marks (！) or (!) for exclamations", 
+                      "- 列表项或说明使用冒号 (：) 或 (:) / Use colons (：) or (:) for list items or explanations",
+                      "- 其他情况可使用分号 (；) 或 (;) / Use semicolons (；) or (;) in other cases",
+                      "",
+                      "**注意 / Note:** 标题、代码块、表格、链接等特殊格式不需要添加终止符。/ Headers, code blocks, tables, links and other special formats don't need punctuation."
+                  ])
+                  
+                  return "\n".join(report)
+          
+          def main():
+              checker = MarkdownFormatChecker()
+              results = checker.check_directory(".")
+              
+              report = checker.generate_report(results)
+              
+              # 输出报告
+              print(report)
+              
+              # 保存详细报告
+              with open("markdown_format_report.md", "w", encoding="utf-8") as f:
+                  f.write(report)
+              
+              # 如果有问题，返回非零退出码
+              if results:
+                  sys.exit(1)
+              
+              sys.exit(0)
+          
+          if __name__ == "__main__":
+              main()
+          EOF
+
+      - name: 运行Markdown格式检查
+        id: format_check
+        run: |
+          python check_markdown_format.py
+          echo "format_check_passed=$?" >> $GITHUB_OUTPUT
+        continue-on-error: true
+
+      - name: 上传检查报告
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: markdown-format-report
+          path: markdown_format_report.md
+          retention-days: 7
+
+      - name: 发布格式检查结果评论 (仅PR)
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            
+            try {
+              const report = fs.readFileSync('markdown_format_report.md', 'utf8');
+              
+              let comment = '# 📝 Markdown格式检查结果\n\n';
+              
+              if (report.includes('✅ 所有Markdown文件格式检查通过')) {
+                comment += '✅ **所有Markdown文件格式检查通过！**\n\n';
+                comment += '所有的正文行都以适当的终止符号结尾。';
+              } else {
+                comment += '⚠️ **发现Markdown格式问题**\n\n';
+                // 限制评论长度，避免过长
+                const truncatedReport = report.length > 3000 ? 
+                  report.substring(0, 3000) + '\n\n> **报告已截断，完整报告请下载构建产物查看**' : 
+                  report;
+                comment += truncatedReport;
+              }
+              
+              comment += '\n\n---\n';
+              comment += '> 🤖 此检查确保所有正文行都以适当的标点符号结尾，提升文档的专业性和可读性。';
+              
+              // 查找现有评论
+              const { data: comments } = await github.rest.issues.listComments({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+              });
+              
+              const existingComment = comments.find(comment => 
+                comment.user.type === 'Bot' && 
+                comment.body.includes('Markdown格式检查结果')
+              );
+              
+              if (existingComment) {
+                await github.rest.issues.updateComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: existingComment.id,
+                  body: comment
+                });
+              } else {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                  body: comment
+                });
+              }
+            } catch (error) {
+              console.log('无法读取检查报告文件:', error.message);
+            }
+
+      - name: 设置检查状态
+        if: steps.format_check.outputs.format_check_passed != '0'
+        run: |
+          echo "❌ Markdown格式检查未通过"
+          echo "请查看上方的检查报告并修复相关问题"
+          exit 1
