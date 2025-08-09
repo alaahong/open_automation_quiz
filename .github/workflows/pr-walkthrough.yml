@@ -233,7 +233,7 @@ jobs:
           echo '- 合理使用缓存机制' >> walkthrough-report/performance-analysis.md
 
       - name: Upload comprehensive analysis
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: comprehensive-walkthrough-${{ github.event.number }}
           path: walkthrough-report/
