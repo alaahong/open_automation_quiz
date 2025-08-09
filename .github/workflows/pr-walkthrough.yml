@@ -1,0 +1,304 @@
+name: PR Code Walkthrough
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [ main ]
+
+permissions:
+  contents: read
+  pull-requests: write
+  security-events: write
+  actions: read
+
+jobs:
+  advanced-walkthrough:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: 21
+          distribution: 'adopt'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Install analysis tools
+        run: |
+          # 安装图表生成工具
+          npm install -g @mermaid-js/mermaid-cli
+          npm install -g dependency-cruiser
+          
+          # 安装Java代码分析工具
+          wget -O /tmp/checkstyle.jar https://github.com/checkstyle/checkstyle/releases/download/checkstyle-10.12.4/checkstyle-10.12.4-all.jar
+
+      - name: Generate comprehensive file analysis
+        run: |
+          mkdir -p walkthrough-report
+          
+          # 获取变更的文件
+          git diff --name-only origin/main...HEAD > walkthrough-report/changed-files.txt
+          git diff --stat origin/main...HEAD > walkthrough-report/diff-stats.txt
+          
+          # 创建详细的文件走查报告
+          cat > walkthrough-report/detailed-walkthrough.md << 'EOF'
+          # 🔍 详细代码走查报告
+          
+          ## 📈 变更统计概览
+          EOF
+          
+          # 添加差异统计
+          echo '```' >> walkthrough-report/detailed-walkthrough.md
+          cat walkthrough-report/diff-stats.txt >> walkthrough-report/detailed-walkthrough.md
+          echo '```' >> walkthrough-report/detailed-walkthrough.md
+          echo '' >> walkthrough-report/detailed-walkthrough.md
+          
+          # 分析每个变更文件的详细信息
+          echo '## 📋 文件详细分析' >> walkthrough-report/detailed-walkthrough.md
+          echo '' >> walkthrough-report/detailed-walkthrough.md
+          
+          while IFS= read -r file; do
+            if [ -n "$file" ] && [ -f "$file" ]; then
+              echo "### 📄 \`$file\`" >> walkthrough-report/detailed-walkthrough.md
+              echo '' >> walkthrough-report/detailed-walkthrough.md
+          
+              # 文件基本信息
+              size=$(wc -c < "$file" 2>/dev/null || echo "0")
+              lines=$(wc -l < "$file" 2>/dev/null || echo "0")
+              echo "- **文件大小**: ${size} bytes" >> walkthrough-report/detailed-walkthrough.md
+              echo "- **行数**: ${lines} 行" >> walkthrough-report/detailed-walkthrough.md
+          
+              # 获取变更统计
+              diff_stats=$(git diff --numstat origin/main...HEAD -- "$file")
+              if [ -n "$diff_stats" ]; then
+                additions=$(echo "$diff_stats" | cut -f1)
+                deletions=$(echo "$diff_stats" | cut -f2)
+                echo "- **新增行数**: ${additions}" >> walkthrough-report/detailed-walkthrough.md
+                echo "- **删除行数**: ${deletions}" >> walkthrough-report/detailed-walkthrough.md
+              fi
+          
+              # Java文件特殊分析
+              if [[ $file == *.java ]]; then
+                classes=$(grep -c "^[[:space:]]*\(public\|private\|protected\).*class" "$file" 2>/dev/null || echo "0")
+                methods=$(grep -c "^\s*\(public\|private\|protected\).*\s\+\w\+\s*(" "$file" 2>/dev/null || echo "0")
+                imports=$(grep -c "^import" "$file" 2>/dev/null || echo "0")
+          
+                echo "- **类数量**: ${classes}" >> walkthrough-report/detailed-walkthrough.md
+                echo "- **方法数量**: ${methods}" >> walkthrough-report/detailed-walkthrough.md
+                echo "- **导入数量**: ${imports}" >> walkthrough-report/detailed-walkthrough.md
+          
+                # 运行checkstyle检查（如果存在）
+                if [ -f "/tmp/checkstyle.jar" ]; then
+                  checkstyle_result=$(java -jar /tmp/checkstyle.jar -c google_checks.xml "$file" 2>/dev/null || echo "无法运行checkstyle检查")
+                  if [ "$checkstyle_result" != "无法运行checkstyle检查" ]; then
+                    violations=$(echo "$checkstyle_result" | grep -c "\[ERROR\]" || echo "0")
+                    echo "- **代码风格问题**: ${violations} 个" >> walkthrough-report/detailed-walkthrough.md
+                  fi
+                fi
+              fi
+          
+              echo '' >> walkthrough-report/detailed-walkthrough.md
+          
+              # 显示关键变更片段
+              echo '#### 🔄 主要变更内容:' >> walkthrough-report/detailed-walkthrough.md
+              echo '```diff' >> walkthrough-report/detailed-walkthrough.md
+              git diff origin/main...HEAD -- "$file" | head -50 >> walkthrough-report/detailed-walkthrough.md
+              echo '```' >> walkthrough-report/detailed-walkthrough.md
+              echo '' >> walkthrough-report/detailed-walkthrough.md
+              echo '---' >> walkthrough-report/detailed-walkthrough.md
+              echo '' >> walkthrough-report/detailed-walkthrough.md
+            fi
+          done < walkthrough-report/changed-files.txt
+
+      - name: Generate project dependency diagrams
+        run: |
+          # 生成Maven模块依赖图
+          cat > walkthrough-report/module-dependency.md << 'EOF'
+          ## 🏗️ 模块依赖关系图
+          
+          ```mermaid
+          graph TB
+              subgraph "FastExcel 模块结构"
+                  core["fastexcel-core<br/>🔧 核心功能模块"]
+                  main["fastexcel<br/>📦 主模块"]
+                  support["fastexcel-support<br/>🛠️ 支持模块"]
+                  test["fastexcel-test<br/>🧪 测试模块"]
+              end
+          
+              subgraph "模块依赖关系"
+                  core --> main
+                  support --> main
+                  test --> core
+                  test --> support
+              end
+          
+              subgraph "外部依赖"
+                  poi["Apache POI<br/>📊 Excel处理"]
+                  slf4j["SLF4J<br/>📝 日志框架"]
+                  junit["JUnit<br/>🧪 单元测试"]
+              end
+          
+              poi --> core
+              slf4j --> core
+              junit --> test
+          
+              classDef coreModule fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+              classDef supportModule fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+              classDef testModule fill:#e8f5e8,stroke:#1b5e20,stroke-width:2px
+              classDef external fill:#fff3e0,stroke:#e65100,stroke-width:2px
+          
+              class core coreModule
+              class main,support supportModule
+              class test testModule
+              class poi,slf4j,junit external
+          ```
+          EOF
+          
+          # 生成详细的Maven依赖树
+          echo '' >> walkthrough-report/module-dependency.md
+          echo '## 📋 详细依赖树' >> walkthrough-report/module-dependency.md
+          echo '' >> walkthrough-report/module-dependency.md
+          echo '```' >> walkthrough-report/module-dependency.md
+          ./mvnw dependency:tree -Dverbose=true >> walkthrough-report/module-dependency.md 2>/dev/null || echo "无法生成依赖树" >> walkthrough-report/module-dependency.md
+          echo '```' >> walkthrough-report/module-dependency.md
+
+      - name: Generate security analysis
+        run: |
+          cat > walkthrough-report/security-analysis.md << 'EOF'
+          ## 🔒 安全性分析
+          
+          ### 📊 潜在安全问题检查
+          EOF
+          
+          # 检查常见的安全问题模式
+          echo '' >> walkthrough-report/security-analysis.md
+          
+          # 检查是否有硬编码的敏感信息
+          sensitive_patterns=0
+          if grep -r -E "(password|secret|key|token).*=" . --include="*.java" --include="*.xml" --include="*.yml" 2>/dev/null; then
+            sensitive_patterns=$((sensitive_patterns + $(grep -r -E "(password|secret|key|token).*=" . --include="*.java" --include="*.xml" --include="*.yml" 2>/dev/null | wc -l)))
+          fi
+          
+          echo "- **潜在敏感信息**: ${sensitive_patterns} 处" >> walkthrough-report/security-analysis.md
+          
+          # 检查SQL注入风险
+          sql_risks=$(grep -r -E "(Statement|executeQuery|executeUpdate).*\+" . --include="*.java" 2>/dev/null | wc -l || echo "0")
+          echo "- **潜在SQL注入风险**: ${sql_risks} 处" >> walkthrough-report/security-analysis.md
+          
+          # 检查文件操作安全
+          file_ops=$(grep -r -E "(File|FileInputStream|FileOutputStream|Path).*\+" . --include="*.java" 2>/dev/null | wc -l || echo "0")
+          echo "- **文件操作风险**: ${file_ops} 处" >> walkthrough-report/security-analysis.md
+          
+          echo '' >> walkthrough-report/security-analysis.md
+          echo '> ⚠️ 这些检查是基于模式匹配的简单分析，可能存在误报。建议进行人工审查。' >> walkthrough-report/security-analysis.md
+
+      - name: Generate performance impact analysis
+        run: |
+          cat > walkthrough-report/performance-analysis.md << 'EOF'
+          ## ⚡ 性能影响分析
+          
+          ### 📈 可能的性能影响点
+          EOF
+          
+          # 检查循环嵌套
+          nested_loops=$(grep -r -E "for.*for|while.*while|for.*while|while.*for" . --include="*.java" 2>/dev/null | wc -l || echo "0")
+          echo "- **嵌套循环**: ${nested_loops} 处" >> walkthrough-report/performance-analysis.md
+          
+          # 检查字符串连接
+          string_concat=$(grep -r -E "\+.*\"|\"\s*\+" . --include="*.java" 2>/dev/null | wc -l || echo "0")
+          echo "- **字符串拼接**: ${string_concat} 处" >> walkthrough-report/performance-analysis.md
+          
+          # 检查集合操作
+          collection_ops=$(grep -r -E "(ArrayList|HashMap|HashSet).*new" . --include="*.java" 2>/dev/null | wc -l || echo "0")
+          echo "- **集合创建**: ${collection_ops} 处" >> walkthrough-report/performance-analysis.md
+          
+          # 检查同步操作
+          sync_ops=$(grep -r -E "(synchronized|ConcurrentHashMap|AtomicInteger)" . --include="*.java" 2>/dev/null | wc -l || echo "0")
+          echo "- **同步操作**: ${sync_ops} 处" >> walkthrough-report/performance-analysis.md
+          
+          echo '' >> walkthrough-report/performance-analysis.md
+          echo '### 🎯 性能优化建议' >> walkthrough-report/performance-analysis.md
+          echo '- 考虑使用StringBuilder代替字符串拼接' >> walkthrough-report/performance-analysis.md
+          echo '- 避免不必要的对象创建' >> walkthrough-report/performance-analysis.md
+          echo '- 优化循环逻辑，减少嵌套层数' >> walkthrough-report/performance-analysis.md
+          echo '- 合理使用缓存机制' >> walkthrough-report/performance-analysis.md
+
+      - name: Upload comprehensive analysis
+        uses: actions/upload-artifact@v3
+        with:
+          name: comprehensive-walkthrough-${{ github.event.number }}
+          path: walkthrough-report/
+          retention-days: 30
+
+      - name: Post comprehensive walkthrough comment
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            
+            let comment = '# 📊 综合代码走查报告\n\n';
+            comment += '> 🤖 **自动生成的详细分析报告**\n\n';
+            
+            // 读取各部分分析结果
+            const sections = [
+              { file: 'detailed-walkthrough.md', title: '文件详细分析' },
+              { file: 'module-dependency.md', title: '模块依赖分析' },
+              { file: 'security-analysis.md', title: '安全性分析' },
+              { file: 'performance-analysis.md', title: '性能分析' }
+            ];
+            
+            for (const section of sections) {
+              try {
+                const content = fs.readFileSync(`walkthrough-report/${section.file}`, 'utf8');
+                comment += content + '\n\n';
+              } catch (e) {
+                comment += `## ❌ ${section.title}\n无法生成 ${section.title} - 请检查构建日志\n\n`;
+              }
+            }
+            
+            comment += '---\n';
+            comment += '## 📎 完整报告下载\n';
+            comment += `> 📋 完整的走查报告已上传为构建产物 \`comprehensive-walkthrough-${context.issue.number}\`\n`;
+            comment += '> 🔍 建议reviewers重点关注标记为高风险的变更\n';
+            comment += '> 💡 这是自动化分析，最终的代码质量判断仍需人工审查\n\n';
+            comment += '*报告生成时间: ' + new Date().toISOString() + '*';
+            
+            // 检查是否已存在综合报告评论
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            
+            const existingComment = comments.find(comment => 
+              comment.user.type === 'Bot' && 
+              comment.body.includes('综合代码走查报告')
+            );
+            
+            if (existingComment) {
+              // 更新现有评论
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existingComment.id,
+                body: comment
+              });
+            } else {
+              // 创建新评论
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: comment
+              });
+            }
