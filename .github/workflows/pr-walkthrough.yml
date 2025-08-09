@@ -120,7 +120,7 @@ jobs:
               git diff origin/$MAIN_BRANCH...HEAD -- "$file" | head -50 >> walkthrough-report/detailed-walkthrough.md
               echo '```' >> walkthrough-report/detailed-walkthrough.md
               echo '' >> walkthrough-report/detailed-walkthrough.md
-              echo '---' >> walkthrough_report/detailed-walkthrough.md
+              echo '---' >> walkthrough-report/detailed-walkthrough.md
               echo '' >> walkthrough-report/detailed-walkthrough.md
             fi
           done < walkthrough-report/changed-files.txt
