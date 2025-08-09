@@ -186,7 +186,7 @@ jobs:
           EOF
           
           # 检查常见的安全问题模式
-          echo '' >> walkthrough_report/security-analysis.md
+          echo '' >> walkthrough-report/security-analysis.md
           
           # 检查是否有硬编码的敏感信息
           sensitive_patterns=0
