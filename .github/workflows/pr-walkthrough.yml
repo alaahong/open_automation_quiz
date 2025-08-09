@@ -44,10 +44,16 @@ jobs:
       - name: Generate comprehensive file analysis
         run: |
           mkdir -p walkthrough-report
-          
+          # 获取主分支名（main 或 master）
+          MAIN_BRANCH="main"
+          if git show-ref --verify --quiet refs/remotes/origin/master; then
+            MAIN_BRANCH="master"
+          fi
+          # 拉取主分支
+          git fetch origin $MAIN_BRANCH:$MAIN_BRANCH
           # 获取变更的文件
-          git diff --name-only origin/main...HEAD > walkthrough-report/changed-files.txt
-          git diff --stat origin/main...HEAD > walkthrough-report/diff-stats.txt
+          git diff --name-only origin/$MAIN_BRANCH...HEAD > walkthrough-report/changed-files.txt
+          git diff --stat origin/$MAIN_BRANCH...HEAD > walkthrough-report/diff-stats.txt
           
           # 创建详细的文件走查报告
           cat > walkthrough-report/detailed-walkthrough.md << 'EOF'
@@ -78,7 +84,7 @@ jobs:
               echo "- **行数**: ${lines} 行" >> walkthrough-report/detailed-walkthrough.md
           
               # 获取变更统计
-              diff_stats=$(git diff --numstat origin/main...HEAD -- "$file")
+              diff_stats=$(git diff --numstat origin/$MAIN_BRANCH...HEAD -- "$file")
               if [ -n "$diff_stats" ]; then
                 additions=$(echo "$diff_stats" | cut -f1)
                 deletions=$(echo "$diff_stats" | cut -f2)
@@ -111,10 +117,10 @@ jobs:
               # 显示关键变更片段
               echo '#### 🔄 主要变更内容:' >> walkthrough-report/detailed-walkthrough.md
               echo '```diff' >> walkthrough-report/detailed-walkthrough.md
-              git diff origin/main...HEAD -- "$file" | head -50 >> walkthrough-report/detailed-walkthrough.md
+              git diff origin/$MAIN_BRANCH...HEAD -- "$file" | head -50 >> walkthrough-report/detailed-walkthrough.md
               echo '```' >> walkthrough-report/detailed-walkthrough.md
               echo '' >> walkthrough-report/detailed-walkthrough.md
-              echo '---' >> walkthrough-report/detailed-walkthrough.md
+              echo '---' >> walkthrough_report/detailed-walkthrough.md
               echo '' >> walkthrough-report/detailed-walkthrough.md
             fi
           done < walkthrough-report/changed-files.txt
@@ -180,7 +186,7 @@ jobs:
           EOF
           
           # 检查常见的安全问题模式
-          echo '' >> walkthrough-report/security-analysis.md
+          echo '' >> walkthrough_report/security-analysis.md
           
           # 检查是否有硬编码的敏感信息
           sensitive_patterns=0
