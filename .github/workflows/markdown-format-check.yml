@@ -50,7 +50,7 @@ jobs:
                   self.sentence_endings = {
                       '。', '.', '!', '！', '?', '？', ':', '：', ';', '；',
                       ')', '）', '}', '}', ']', '】', '>', '》', '"', '"', 
-                      "'", ''', '`', '…', '——', '-', '~', '～'
+                      "'", '`', '…', '——', '-', '~', '～'
                   }
                   
                   # 定义不需要终止符的行类型 / Define line types that don't need punctuation
@@ -253,7 +253,7 @@ jobs:
         if: always()
         with:
           name: markdown-format-report
-          path: markdown_format_report.md
+          path: check_markdown_format.log
           retention-days: 7
 
       - name: 发布格式检查结果评论 (仅PR)
