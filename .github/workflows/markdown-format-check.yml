@@ -81,6 +81,8 @@ jobs:
                       r'^\s*\d+\)\s*[^.。!！?？:：;；]*$',  # 数字列表项（内容不完整） / Numbered list items (incomplete content)
                       r'^\s*[-*+]\s*[^.。!！?？:：;；]*$',  # 符号列表项（内容不完整） / Bullet list items (incomplete content)
                       r'^#+\s*[^.。!！?？:：;；]*$',       # 标题（一般不需要终止符） / Headers (usually don't need punctuation)
+                      r'^\s*\*\*.*\*\*\s*$',      # 粗体强调行 / Bold emphasis line
+                      r'^\s*\*.*\*\s*$'             # 斜体强调行 / Italic emphasis line
                   ]
           
               def is_skip_line(self, line: str) -> bool:
@@ -253,7 +255,7 @@ jobs:
         if: always()
         with:
           name: markdown-format-report
-          path: check_markdown_format.log
+          path: markdown_format_report.md
           retention-days: 7
 
       - name: 发布格式检查结果评论 (仅PR)
