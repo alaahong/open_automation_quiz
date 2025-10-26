@@ -7,6 +7,7 @@
  *   - If provider call fails (401/403/404/429/503...), fall back to rule-based analysis so PR still receives suggestions.
  *   - Post analysis to PR (or create Issue).
  */
+
 import java.io.*;
 import java.net.URI;
 import java.net.http.*;
@@ -168,16 +169,16 @@ public class MultiProviderCiFailureAnalyzer {
         try {
             HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(20)).build();
             String body = """
-            {
-              "model": %s,
-              "messages": [
-                {"role": "system", "content": "You are a senior CI/CD debugging assistant."},
-                {"role": "user", "content": %s}
-              ],
-              "max_tokens": %d,
-              "temperature": 0.2
-            }
-            """.formatted(jsonString(model), jsonString(prompt), maxTokens);
+                    {
+                      "model": %s,
+                      "messages": [
+                        {"role": "system", "content": "You are a senior CI/CD debugging assistant."},
+                        {"role": "user", "content": %s}
+                      ],
+                      "max_tokens": %d,
+                      "temperature": 0.2
+                    }
+                    """.formatted(jsonString(model), jsonString(prompt), maxTokens);
 
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create("https://openrouter.ai/api/v1/chat/completions"))
@@ -217,15 +218,15 @@ public class MultiProviderCiFailureAnalyzer {
         try {
             HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(20)).build();
             String body = """
-            {
-              "inputs": %s,
-              "parameters": {
-                "max_new_tokens": %d,
-                "temperature": 0.2,
-                "return_full_text": false
-              }
-            }
-            """.formatted(jsonString(prompt), maxNewTokens);
+                    {
+                      "inputs": %s,
+                      "parameters": {
+                        "max_new_tokens": %d,
+                        "temperature": 0.2,
+                        "return_full_text": false
+                      }
+                    }
+                    """.formatted(jsonString(prompt), maxNewTokens);
 
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create("https://api-inference.huggingface.co/models/" + model))
@@ -262,14 +263,14 @@ public class MultiProviderCiFailureAnalyzer {
 
     private static String buildPrompt(String ctx, String jobsSummary, String highlights) {
         String instruction = """
-        You are a senior CI/CD debugging assistant.
-        Based on the CI context, failed jobs/steps summary, and the Error Highlights below, provide:
-        1) Top 1–3 likely root causes (ranked by confidence; cite key lines/files/commands).
-        2) The minimal fix to make CI pass (concrete commands or code changes).
-        3) Next steps to verify or further debug (specific commands/files/log keywords).
-        If this resembles dependency/cache/permission/concurrency/timeout/environment/test flakiness,
-        call it out and provide a proven template fix. Keep the answer concise and structured.
-        """;
+                You are a senior CI/CD debugging assistant.
+                Based on the CI context, failed jobs/steps summary, and the Error Highlights below, provide:
+                1) Top 1–3 likely root causes (ranked by confidence; cite key lines/files/commands).
+                2) The minimal fix to make CI pass (concrete commands or code changes).
+                3) Next steps to verify or further debug (specific commands/files/log keywords).
+                If this resembles dependency/cache/permission/concurrency/timeout/environment/test flakiness,
+                call it out and provide a proven template fix. Keep the answer concise and structured.
+                """;
         String prompt = "CI Context:\n" + ctx + "\n\n" +
                 "Failed jobs/steps summary:\n" + jobsSummary + "\n\n" +
                 "Error Highlights:\n" + highlights + "\n\n" +
@@ -281,9 +282,15 @@ public class MultiProviderCiFailureAnalyzer {
         return prompt;
     }
 
-    private record Rule(String name, Pattern pattern, String explanation, List<String> minimalFix, List<String> nextSteps) {}
-    private record DiagnosisEntry(Rule rule, int score, List<String> samples) {}
-    private record DiagnosisResult(List<DiagnosisEntry> entries) {}
+    private record Rule(String name, Pattern pattern, String explanation, List<String> minimalFix,
+                        List<String> nextSteps) {
+    }
+
+    private record DiagnosisEntry(Rule rule, int score, List<String> samples) {
+    }
+
+    private record DiagnosisResult(List<DiagnosisEntry> entries) {
+    }
 
     private static String ruleBasedAnalysis(String highlights) {
         List<Rule> rules = defaultRules();
@@ -534,6 +541,7 @@ public class MultiProviderCiFailureAnalyzer {
     private static String jsonString(String s) {
         return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n") + "\"";
     }
+
     private static String extractJsonField(String json, String field) {
         String key = "\"" + field + "\"";
         int i = json.indexOf(key);
@@ -560,12 +568,21 @@ public class MultiProviderCiFailureAnalyzer {
         if (isBlank(v)) throw new IllegalStateException("Missing environment variable: " + key);
         return v;
     }
+
     private static String getenvOr(String key, String def) {
         String v = System.getenv(key);
         return isBlank(v) ? def : v;
     }
+
     private static int parseIntSafe(String s, int def) {
-        try { return Integer.parseInt(s.trim()); } catch (Exception e) { return def; }
+        try {
+            return Integer.parseInt(s.trim());
+        } catch (Exception e) {
+            return def;
+        }
     }
-    private static boolean isBlank(String s) { return s == null || s.trim().isEmpty(); }
+
+    private static boolean isBlank(String s) {
+        return s == null || s.trim().isEmpty();
+    }
 }
