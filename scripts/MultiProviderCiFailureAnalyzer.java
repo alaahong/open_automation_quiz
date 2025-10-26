@@ -1,10 +1,10 @@
-/* Java 21 multi-provider CI failure analyzer (highlights-only) with preflight and rule-based fallback.
+/* Java 21 multi-provider CI failure analyzer (highlights-only) with preflight-style robustness and rule-based fallback.
  * Providers:
  *   - OpenRouter: https://openrouter.ai/api/v1/chat/completions (PROVIDER=openrouter, OPENROUTER_API_KEY, OPENROUTER_MODEL)
  *   - Hugging Face Inference: https://api-inference.huggingface.co/models/{model} (PROVIDER=hf, HF_API_TOKEN, HF_MODEL)
  * Behavior:
  *   - Extract Error Highlights from combined logs.
- *   - Preflight provider/model; if not accessible, fall back to rule-based analysis.
+ *   - If provider call fails (401/403/404/429/503...), fall back to rule-based analysis so PR still receives suggestions.
  *   - Post analysis to PR (or create Issue).
  */
 import java.io.*;
@@ -17,8 +17,8 @@ import java.util.*;
 import java.util.regex.*;
 
 public class MultiProviderCiFailureAnalyzer {
-    private static final int BODY_MAX_CHARS = 60000;
-    private static final int LOG_MAX_CHARS = 120000;
+    private static final int BODY_MAX_CHARS = 60_000;
+    private static final int LOG_MAX_CHARS = 120_000;
 
     public static void main(String[] args) {
         try {
@@ -35,7 +35,7 @@ public class MultiProviderCiFailureAnalyzer {
 
             // OpenRouter
             String orKey = getenvOr("OPENROUTER_API_KEY", "").trim();
-            String orModel = getenvOr("OPENROUTER_MODEL", "google/gemini-2.0-flash-exp:free").trim();
+            String orModel = getenvOr("OPENROUTER_MODEL", "meta-llama/llama-3.1-8b-instruct:free").trim();
 
             // Hugging Face
             String hfToken = getenvOr("HF_API_TOKEN", "").trim();
@@ -274,8 +274,8 @@ public class MultiProviderCiFailureAnalyzer {
                 "Failed jobs/steps summary:\n" + jobsSummary + "\n\n" +
                 "Error Highlights:\n" + highlights + "\n\n" +
                 instruction;
-        if (prompt.length() > 16000) {
-            prompt = prompt.substring(prompt.length() - 16000);
+        if (prompt.length() > 16_000) {
+            prompt = prompt.substring(prompt.length() - 16_000);
             prompt = "...[prompt truncated]...\n" + prompt;
         }
         return prompt;
@@ -477,6 +477,37 @@ public class MultiProviderCiFailureAnalyzer {
         return rs;
     }
 
+    // ----------------- Log helpers -----------------
+
+    private static String readCombinedLogs() throws IOException {
+        Path p = Paths.get("logs", "combined.txt");
+        if (!Files.exists(p)) return "No combined logs were captured.";
+        String text = Files.readString(p, StandardCharsets.UTF_8);
+        if (text.length() > LOG_MAX_CHARS) {
+            text = "...[truncated to last " + LOG_MAX_CHARS + " chars]...\n" +
+                    text.substring(text.length() - LOG_MAX_CHARS);
+        }
+        return text;
+    }
+
+    private static String extractErrorHighlights(String text, int maxLines) {
+        if (text == null || text.isBlank()) return "(no highlights)";
+        String[] lines = text.split("\\R");
+        Pattern re = Pattern.compile(
+                "\\b(error|err!|failed|failure|exception|traceback|no classdef|classnotfound|assertion(?:error)?|segmentation fault|build failed|gradle|maven|npm ERR!|yarn ERR!|test failed|cannot find symbol|undefined reference|stack trace|fatal:)\\b",
+                Pattern.CASE_INSENSITIVE
+        );
+        StringBuilder sb = new StringBuilder();
+        int count = 0;
+        for (String ln : lines) {
+            if (re.matcher(ln).find()) {
+                sb.append(ln).append("\n");
+                if (++count >= maxLines) break;
+            }
+        }
+        return count > 0 ? sb.toString().trim() : "(no lines matched common failure patterns)";
+    }
+
     // ----------------- GH helpers & utils -----------------
 
     private static String ghApiJq(String endpoint, String jq) throws IOException, InterruptedException {
@@ -523,6 +554,7 @@ public class MultiProviderCiFailureAnalyzer {
         String val = json.substring(startQuote + 1, end);
         return val.replace("\\n", "\n").replace("\\\"", "\"");
     }
+
     private static String requireEnv(String key) {
         String v = System.getenv(key);
         if (isBlank(v)) throw new IllegalStateException("Missing environment variable: " + key);
