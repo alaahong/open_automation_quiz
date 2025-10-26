@@ -1,11 +1,16 @@
-/* Java 21 single-file script to post a Copilot-ready comment for failed CI jobs.
- * "Links-only" mode: does NOT embed any log content. It posts:
- * - Run URL
- * - Failed job URL (direct link to job logs)
- * - Failed steps list (names and conclusions only)
- * - Instructions to ask Copilot, recommending pasting key error lines manually
+/* Java 21 script to post a Copilot-ready comment for failed CI runs.
+ * Highlights-only mode:
+ * - Fetch the failed run and jobs metadata via `gh api`.
+ * - Read logs/combined.txt built by the workflow step.
+ * - Extract the first N lines that match common failure patterns (Error Highlights).
+ * - Post a PR comment (or create an Issue) with:
+ *   - Run URL, Failed job URL
+ *   - Failed jobs/steps summary (names + conclusions)
+ *   - Error Highlights (only, no full logs)
+ *   - A concise prompt to ask Copilot for root cause, minimal fix, and next steps
  *
  * Requirements:
+ * - JDK 21
  * - GitHub-hosted runner with `gh` CLI available (default on ubuntu-latest)
  * - GH_TOKEN/GITHUB_TOKEN provided by Actions
  */
@@ -13,17 +18,17 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.*;
+import java.util.regex.*;
 
 public class CiCopilotPrompt {
     private static final int BODY_MAX_CHARS = 60_000;
+    private static final int LOG_MAX_CHARS = 120_000;
+    private static final int HIGHLIGHT_MAX_LINES = 200;
 
     public static void main(String[] args) {
         try {
             String repo = requireEnv("REPO");
             String runId = requireEnv("RUN_ID");
-            // JOB_ID/JOB_NAME may be empty when triggered by workflow_run
-            String jobId = getenvOr("JOB_ID", "");
-            String jobName = getenvOr("JOB_NAME", "(unknown)");
             String workflowName = getenvOr("WORKFLOW_NAME", "(unknown)");
             String serverUrl = getenvOr("SERVER_URL", "https://github.com");
 
@@ -39,19 +44,13 @@ public class CiCopilotPrompt {
             String prNumStr = ghApiJq("repos/" + repo + "/actions/runs/" + runId, "(.pull_requests[0].number // 0)");
             int prNumber = parseIntSafe(prNumStr, 0);
 
-            // Resolve failed job URL:
+            // Resolve failed job URL (first failed job)
             String jobsEndpoint = "repos/" + repo + "/actions/runs/" + runId + "/jobs?per_page=100";
-            String jobHtmlUrl;
-            if (!isBlank(jobId)) {
-                jobHtmlUrl = ghApiJq(jobsEndpoint,
-                        "([.jobs[] | select(.id == " + jobId + ") | .html_url] | first // \"\")");
-            } else {
-                jobHtmlUrl = ghApiJq(jobsEndpoint,
-                        "([.jobs[] | select(.conclusion != \"success\" and .conclusion != null) | .html_url] | first // \"\")");
-            }
+            String jobHtmlUrl = ghApiJq(jobsEndpoint,
+                    "([.jobs[] | select(.conclusion != \"success\" and .conclusion != null) | .html_url] | first // \"\")");
             if (isBlank(jobHtmlUrl)) jobHtmlUrl = runUrl;
 
-            // Failed jobs/steps summary (names and conclusions only)
+            // Failed jobs/steps summary
             String jobsSummary = ghApiJq(jobsEndpoint,
                     "([.jobs[] "
                             + "| select(.conclusion != \"success\" and .conclusion != null) "
@@ -67,11 +66,14 @@ public class CiCopilotPrompt {
                             + "] | if length>0 then join(\"\\n\\n\") else \"(no summary)\" end)"
             );
 
+            // Read combined logs and compute highlights
+            String combinedLogs = readCombinedLogs();
+            String errorHighlights = extractErrorHighlights(combinedLogs, HIGHLIGHT_MAX_LINES);
+
+            // Context and instruction (English-only)
             String ctx = String.join("\n", List.of(
                     "Repository: " + repo,
                     "Workflow: " + workflowName,
-                    "Job: " + jobName,
-                    "Job ID: " + jobId,
                     "Run ID: " + runId,
                     "Run URL: " + runUrl,
                     "Event: " + event,
@@ -80,36 +82,37 @@ public class CiCopilotPrompt {
                     "Run conclusion: " + runConclusion
             ));
 
-            // Copilot instruction (links-only flow)
             String instruction = """
-            Copilot，请基于上下文信息以及维护者随后粘贴到本线程中的关键错误行，给出：
-            1) 最可能的1~3个根因（按置信度排序，引用粘贴的关键日志行/文件路径/命令输出）
-            2) 最小修复方案（尽量小的改动即可让 CI 通过，给出具体命令或代码修改示意）
-            3) 下一步验证/排查步骤（具体到命令/文件/日志关键字）
+            Copilot, based on the context and Error Highlights below, please provide:
+            1) The top 1–3 likely root causes (ranked by confidence; reference key lines/files/commands).
+            2) The minimal fix to make CI pass (concrete commands or code changes where possible).
+            3) Next steps to verify or further debug (specific commands/files/log keywords).
+            If this looks like a dependency/cache/permission/concurrency/timeout/environment/test flakiness issue, call it out and provide a proven template fix.
             """.trim();
 
+            // Build body (no full logs, only highlights)
             StringBuilder body = new StringBuilder();
-            body.append("⚠️ CI 失败：日志位置与快速定位（不内嵌日志）\n\n");
+            body.append("⚠️ CI failed: links and Error Highlights (no full logs embedded)\n\n");
             body.append("- Run: ").append(runUrl).append("\n");
             body.append("- Failed job: ").append(jobHtmlUrl).append("\n");
-            body.append("- 提示：打开 “Failed job” 链接，展开失败的 Step 查看完整日志与错误堆栈。\n\n");
+            body.append("- Tip: open the \"Failed job\" link and expand the failed step to view the complete logs and stack traces.\n\n");
 
-            body.append("上下文：\n```\n").append(ctx).append("\n```\n\n");
-            body.append("失败的 jobs/steps 摘要（仅名称与结论，不包含日志）：\n```\n")
+            body.append("Context:\n```\n").append(ctx).append("\n```\n\n");
+            body.append("Failed jobs/steps summary (names and conclusions only):\n```\n")
                     .append(jobsSummary).append("\n```\n\n");
 
-            body.append("如何让 Copilot 给出根因与修复建议：\n");
-            body.append("1) 点击上方 “Failed job” 打开日志页面，复制最具代表性的报错行或堆栈（约 10~30 行）。\n");
-            body.append("2) 回到此评论，点击 “Ask Copilot/请求 Copilot”，将错误片段粘贴进对话中并附上以下提示词：\n");
-            body.append("```\n").append(instruction).append("\n```\n");
+            body.append("Error Highlights (first ").append(HIGHLIGHT_MAX_LINES).append(" matching lines):\n```txt\n")
+                    .append(errorHighlights).append("\n```\n\n");
+
+            body.append("Ask Copilot with this prompt:\n```\n").append(instruction).append("\n```\n");
 
             String finalBody = body.toString();
             if (finalBody.length() > BODY_MAX_CHARS) {
-                finalBody = finalBody.substring(0, BODY_MAX_CHARS) + "\n\n…(内容过长已截断)…";
+                finalBody = finalBody.substring(0, BODY_MAX_CHARS) + "\n\n…(truncated)…";
             }
 
-            // Write to temp and post via gh
-            Path tmp = Files.createTempFile("copilot-comment-links-only-", ".md");
+            // Post comment or create issue
+            Path tmp = Files.createTempFile("copilot-comment-highlights-", ".md");
             Files.writeString(tmp, finalBody, StandardCharsets.UTF_8);
 
             if (prNumber > 0) {
@@ -119,9 +122,9 @@ public class CiCopilotPrompt {
                         "--repo", repo,
                         "--body-file", tmp.toString()
                 });
-                System.out.println("Posted links-only Copilot prompt to PR #" + prNumber);
+                System.out.println("Posted highlights-only Copilot prompt to PR #" + prNumber);
             } else {
-                String title = "CI failed: Links-only context for run " + runId + " (" + workflowName + " · " + jobName + ")";
+                String title = "CI failed: highlights-only context for run " + runId + " (" + workflowName + ")";
                 runProcess(new String[]{
                         "gh", "issue", "create",
                         "--repo", repo,
@@ -130,17 +133,47 @@ public class CiCopilotPrompt {
                         "-l", "ci-failure",
                         "-l", "copilot-analysis-request"
                 });
-                System.out.println("Created issue with links-only Copilot prompt");
+                System.out.println("Created issue with highlights-only Copilot prompt");
             }
 
         } catch (Exception e) {
             // Do not fail the analyzer job
-            System.err.println("Failed to post Copilot links-only prompt: " + e);
+            System.err.println("Failed to post Copilot highlights-only prompt: " + e);
             System.exit(0);
         }
     }
 
     // Helpers
+
+    private static String readCombinedLogs() throws IOException {
+        Path p = Paths.get("logs", "combined.txt");
+        if (!Files.exists(p)) return "No combined logs were captured.";
+        String text = Files.readString(p, StandardCharsets.UTF_8);
+        if (text.length() > LOG_MAX_CHARS) {
+            text = "...[truncated to last " + LOG_MAX_CHARS + " chars]...\n" +
+                    text.substring(text.length() - LOG_MAX_CHARS);
+        }
+        return text;
+    }
+
+    private static String extractErrorHighlights(String text, int maxLines) {
+        if (text == null || text.isBlank()) return "(no highlights)";
+        String[] lines = text.split("\\R");
+        // Common failure patterns across ecosystems
+        Pattern re = Pattern.compile(
+                "\\b(error|err!|failed|failure|exception|traceback|no classdef|classnotfound|assertion(?:error)?|segmentation fault|build failed|gradle|maven|npm ERR!|yarn ERR!|test failed|cannot find symbol|undefined reference|stack trace|fatal:)\\b",
+                Pattern.CASE_INSENSITIVE
+        );
+        StringBuilder sb = new StringBuilder();
+        int count = 0;
+        for (String ln : lines) {
+            if (re.matcher(ln).find()) {
+                sb.append(ln).append("\n");
+                if (++count >= maxLines) break;
+            }
+        }
+        return count > 0 ? sb.toString().trim() : "(no lines matched common failure patterns)";
+    }
 
     private static String ghApiJq(String endpoint, String jq) throws IOException, InterruptedException {
         return runProcess(new String[]{"gh", "api", endpoint, "--jq", jq}).trim();
