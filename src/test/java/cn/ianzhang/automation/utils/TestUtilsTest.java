@@ -29,7 +29,7 @@ class TestUtilsTest {
 
     @Test
     void positiveVerificationReturnsTrueForLargePositiveNumber() {
-        assertTrue(TestUtils.positiveVerification(10000000));
+        assertTrue(TestUtils.positiveVerification(100000000));
     }
 
     @Test
