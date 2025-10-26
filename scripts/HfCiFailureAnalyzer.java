@@ -43,7 +43,7 @@ public class HfCiFailureAnalyzer {
             int hfMaxNew = parseIntSafe(getenvOr("HF_MAX_NEW_TOKENS", "800"), 800);
 
             String hfToken = getenvOr("HF_API_TOKEN", "").trim();
-            String hfModelRaw = getenvOr("HF_MODEL", "HuggingFaceTB/SmolLM3-3B");
+            String hfModelRaw = getenvOr("HF_MODEL", "katanemo/Arch-Router-1.5B");
             String hfModel = hfModelRaw == null ? "" : hfModelRaw.trim();
 
             // Prepare fallback list (trim each)
