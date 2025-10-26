@@ -36,11 +36,10 @@ jobs:
 
       - name: Post PR/Issue comment with Copilot-ready prompt (links only)
         env:
-          # gh CLI 使用 GH_TOKEN；同时保留 GITHUB_TOKEN
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RUN_ID: ${{ github.event.workflow_run.id }}
-          # JOB_ID/JOB_NAME 在 workflow_run 中不可用，留空由 Java 端兜底
+          # JOB_ID/JOB_NAME not available on workflow_run; Java will auto-pick first failed job
           REPO: ${{ github.repository }}
           API_URL: ${{ github.api_url }}
           SERVER_URL: ${{ github.server_url }}
