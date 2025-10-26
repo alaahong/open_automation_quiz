@@ -12,6 +12,7 @@
  *   If not set, a sane default list is used (see DEFAULT_FALLBACKS).
  * - HF_MAX_NEW_TOKENS, ANALYZER_MAX_HIGHLIGHTS (see workflow)
  */
+
 import java.io.*;
 import java.net.URI;
 import java.net.http.*;
@@ -210,15 +211,15 @@ public class HfCiFailureAnalyzer {
         try {
             HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(20)).build();
             String body = """
-            {
-              "inputs": %s,
-              "parameters": {
-                "max_new_tokens": %d,
-                "temperature": 0.2,
-                "return_full_text": false
-              }
-            }
-            """.formatted(jsonString(prompt), maxNewTokens);
+                    {
+                      "inputs": %s,
+                      "parameters": {
+                        "max_new_tokens": %d,
+                        "temperature": 0.2,
+                        "return_full_text": false
+                      }
+                    }
+                    """.formatted(jsonString(prompt), maxNewTokens);
 
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create("https://api-inference.huggingface.co/models/" + model))
@@ -270,8 +271,11 @@ public class HfCiFailureAnalyzer {
         final boolean ok;
         final int status;
         final String note;
+
         PreflightResult(boolean ok, int status, String note) {
-            this.ok = ok; this.status = status; this.note = note == null ? "" : note;
+            this.ok = ok;
+            this.status = status;
+            this.note = note == null ? "" : note;
         }
     }
 
@@ -282,8 +286,8 @@ public class HfCiFailureAnalyzer {
         try {
             HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
             String body = """
-            {"inputs":"preflight","parameters":{"max_new_tokens":1,"temperature":0.0,"return_full_text":false}}
-            """;
+                    {"inputs":"preflight","parameters":{"max_new_tokens":1,"temperature":0.0,"return_full_text":false}}
+                    """;
             HttpRequest req = HttpRequest.newBuilder()
                     .uri(URI.create("https://api-inference.huggingface.co/models/" + trimmedModel))
                     .timeout(Duration.ofSeconds(30))
@@ -318,7 +322,7 @@ public class HfCiFailureAnalyzer {
                 num.append(json.charAt(end++));
             }
             double seconds = Double.parseDouble(num.toString());
-            return Math.max(1, (int)Math.ceil(seconds));
+            return Math.max(1, (int) Math.ceil(seconds));
         } catch (Exception e) {
             return def;
         }
@@ -326,14 +330,14 @@ public class HfCiFailureAnalyzer {
 
     private static String buildPrompt(String ctx, String jobsSummary, String highlights) {
         String instruction = """
-        You are a senior CI/CD debugging assistant.
-        Based on the CI context, failed jobs/steps summary, and the Error Highlights below, provide:
-        1) Top 1–3 likely root causes (ranked by confidence; cite key lines/files/commands).
-        2) The minimal fix to make CI pass (concrete commands or code changes).
-        3) Next steps to verify or further debug (specific commands/files/log keywords).
-        If this resembles dependency/cache/permission/concurrency/timeout/environment/test flakiness,
-        call it out and provide a proven template fix. Keep the answer concise and structured.
-        """;
+                You are a senior CI/CD debugging assistant.
+                Based on the CI context, failed jobs/steps summary, and the Error Highlights below, provide:
+                1) Top 1–3 likely root causes (ranked by confidence; cite key lines/files/commands).
+                2) The minimal fix to make CI pass (concrete commands or code changes).
+                3) Next steps to verify or further debug (specific commands/files/log keywords).
+                If this resembles dependency/cache/permission/concurrency/timeout/environment/test flakiness,
+                call it out and provide a proven template fix. Keep the answer concise and structured.
+                """;
         String prompt = "CI Context:\n" + ctx + "\n\n" +
                 "Failed jobs/steps summary:\n" + jobsSummary + "\n\n" +
                 "Error Highlights:\n" + highlights + "\n\n" +
@@ -378,9 +382,15 @@ public class HfCiFailureAnalyzer {
 
     // ----------------- Rule-based fallback -----------------
 
-    private record Rule(String name, Pattern pattern, String explanation, List<String> minimalFix, List<String> nextSteps) {}
-    private record DiagnosisEntry(Rule rule, int score, List<String> samples) {}
-    private record DiagnosisResult(List<DiagnosisEntry> entries) {}
+    private record Rule(String name, Pattern pattern, String explanation, List<String> minimalFix,
+                        List<String> nextSteps) {
+    }
+
+    private record DiagnosisEntry(Rule rule, int score, List<String> samples) {
+    }
+
+    private record DiagnosisResult(List<DiagnosisEntry> entries) {
+    }
 
     private static String ruleBasedAnalysis(String highlights) {
         List<Rule> rules = defaultRules();
@@ -598,6 +608,7 @@ public class HfCiFailureAnalyzer {
     private static String jsonString(String s) {
         return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n") + "\"";
     }
+
     private static String extractJsonField(String json, String field) {
         String key = "\"" + field + "\"";
         int i = json.indexOf(key);
@@ -618,17 +629,27 @@ public class HfCiFailureAnalyzer {
         String val = json.substring(startQuote + 1, end);
         return val.replace("\\n", "\n").replace("\\\"", "\"");
     }
+
     private static String requireEnv(String key) {
         String v = System.getenv(key);
         if (isBlank(v)) throw new IllegalStateException("Missing environment variable: " + key);
         return v;
     }
+
     private static String getenvOr(String key, String def) {
         String v = System.getenv(key);
         return isBlank(v) ? def : v;
     }
+
     private static int parseIntSafe(String s, int def) {
-        try { return Integer.parseInt(s.trim()); } catch (Exception e) { return def; }
+        try {
+            return Integer.parseInt(s.trim());
+        } catch (Exception e) {
+            return def;
+        }
     }
-    private static boolean isBlank(String s) { return s == null || s.trim().isEmpty(); }
+
+    private static boolean isBlank(String s) {
+        return s == null || s.trim().isEmpty();
+    }
 }
