@@ -34,12 +34,76 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Post PR/Issue comment with Copilot-ready prompt (links only)
+      - name: Download failed job/run logs and build combined.txt
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO_FULL: ${{ github.repository }}
+          API_URL: ${{ github.api_url }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+          mkdir -p logs
+          echo "Querying failed job IDs for run ${RUN_ID} ..."
+          FAILED_JOB_IDS=$(gh api "repos/${REPO_FULL}/actions/runs/${RUN_ID}/jobs?per_page=100" --jq '.jobs[] | select(.conclusion != "success" and .conclusion != null) | .id')
+
+          > logs/combined.txt
+          HAVE_ANY=0
+
+          download_job_logs() {
+            local JID="$1"
+            echo "Downloading logs for job ${JID} ..."
+            curl -sSL -D "logs/job_${JID}_headers.txt" \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              "${API_URL}/repos/${REPO_FULL}/actions/jobs/${JID}/logs" \
+              -o "logs/job_${JID}_payload" || true
+
+            if unzip -q "logs/job_${JID}_payload" -d "logs/job_${JID}" 2>/dev/null; then
+              echo "Unzipped job ${JID} logs."
+              find "logs/job_${JID}" -type f -name "*.txt" -print0 | xargs -0 -I{} sh -c 'echo -e "\n==== {} ====\n"; tail -n 2000 "{}"' >> logs/combined.txt || true
+              HAVE_ANY=1
+            else
+              mv "logs/job_${JID}_payload" "logs/job_${JID}.log" || true
+              if [ -f "logs/job_${JID}.log" ]; then
+                echo -e "\n==== logs/job_${JID}.log ====\n" >> logs/combined.txt
+                tail -n 5000 "logs/job_${JID}.log" >> logs/combined.txt || true
+                HAVE_ANY=1
+              fi
+            fi
+          }
+
+          if [ -n "${FAILED_JOB_IDS}" ]; then
+            for J in ${FAILED_JOB_IDS}; do
+              download_job_logs "${J}"
+            done
+          else
+            echo "No failed job IDs resolved; falling back to run-level logs."
+          fi
+
+          if [ "${HAVE_ANY}" -eq 0 ]; then
+            echo "Downloading run-level logs for RUN_ID=${RUN_ID} ..."
+            curl -sSL \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              "${API_URL}/repos/${REPO_FULL}/actions/runs/${RUN_ID}/logs" \
+              -o logs/run_logs.zip || true
+
+            if [ -f logs/run_logs.zip ]; then
+              unzip -q logs/run_logs.zip -d logs/run || true
+              find logs/run -type f -name "*.txt" -print0 | xargs -0 -I{} sh -c 'echo -e "\n==== {} ====\n"; tail -n 2000 "{}"' >> logs/combined.txt || true
+              HAVE_ANY=1
+            fi
+          fi
+
+          if [ ! -s logs/combined.txt ]; then
+            echo "No logs were available to download for run ${RUN_ID}." > logs/combined.txt
+          fi
+
+      - name: Post PR/Issue comment with Copilot-ready prompt (highlights only)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RUN_ID: ${{ github.event.workflow_run.id }}
-          # JOB_ID/JOB_NAME not available on workflow_run; Java will auto-pick first failed job
           REPO: ${{ github.repository }}
           API_URL: ${{ github.api_url }}
           SERVER_URL: ${{ github.server_url }}
