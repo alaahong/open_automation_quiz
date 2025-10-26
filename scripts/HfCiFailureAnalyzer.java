@@ -1,16 +1,7 @@
-/* Java 21 Hugging Face Inference-based CI failure analyzer (highlights-only).
+/* Java 21 Hugging Face Inference-based CI failure analyzer (highlights-only) with rule-based fallback.
  * - Extracts high-signal error lines (first N matches) from combined logs.
- * - Calls Hugging Face Inference API (text-generation) to produce:
- *   root causes, minimal fix, and next steps.
- * - Posts a PR comment (or creates an Issue) with links, summary, highlights, and analysis.
- *
- * Requirements:
- * - JDK 21
- * - GitHub-hosted runner with `gh` CLI available (ubuntu-latest)
- * - Secrets: HF_API_TOKEN
- * - Optional vars: HF_MODEL (default: meta-llama/Llama-3.2-3B-Instruct),
- *                  ANALYZER_MAX_HIGHLIGHTS (default 200),
- *                  HF_MAX_NEW_TOKENS (default 800)
+ * - Calls Hugging Face Inference API (text-generation) to produce: root causes, minimal fix, next steps.
+ * - If HF returns non-2xx (e.g., 404/401/403/503), falls back to a built-in rule engine so PR still receives suggestions.
  */
 import java.io.*;
 import java.net.URI;
@@ -34,10 +25,8 @@ public class HfCiFailureAnalyzer {
             int highlightMax = parseIntSafe(getenvOr("ANALYZER_MAX_HIGHLIGHTS", "200"), 200);
             int hfMaxNew = parseIntSafe(getenvOr("HF_MAX_NEW_TOKENS", "800"), 800);
 
-            // Hugging Face config
             String hfToken = getenvOr("HF_API_TOKEN", "");
-            String hfModel = getenvOr("HF_MODEL", "deepseek-ai/deepseek-coder-6.7b-instruct");
-//            String hfModel = getenvOr("HF_MODEL", "meta-llama/Llama-3.2-3B-Instruct");
+            String hfModel = getenvOr("HF_MODEL", "mistralai/Mistral-7B-Instruct-v0.2");
 
             // Run details
             String runUrl = ghApiJq("repos/" + repo + "/actions/runs/" + runId, ".html_url");
@@ -85,7 +74,8 @@ public class HfCiFailureAnalyzer {
                     "Event: " + event,
                     "Head branch: " + headBranch,
                     "Commit SHA: " + headSha,
-                    "Run conclusion: " + runConclusion
+                    "Run conclusion: " + runConclusion,
+                    "HF model: " + hfModel
             ));
 
             String prompt = buildPrompt(context, jobsSummary, errorHighlights);
@@ -93,14 +83,15 @@ public class HfCiFailureAnalyzer {
             String analysis;
             if (isBlank(hfToken)) {
                 analysis = "Hugging Face Inference is not configured (HF_API_TOKEN is missing). " +
-                        "Please add HF_API_TOKEN in repository Secrets and re-run this workflow.";
+                        "Please add HF_API_TOKEN in repository Secrets and re-run this workflow.\n\n" +
+                        ruleBasedAnalysis(errorHighlights);
             } else {
-                analysis = analyzeWithHuggingFace(hfToken, hfModel, prompt, hfMaxNew);
+                analysis = analyzeWithHuggingFaceOrFallback(hfToken, hfModel, prompt, errorHighlights, combinedLogs, hfMaxNew);
             }
 
             // Build comment body
             StringBuilder body = new StringBuilder();
-            body.append("🤖 CI failure: Hugging Face Inference analysis\n\n");
+            body.append("🤖 CI failure: Hugging Face Inference analysis (with rule-based fallback)\n\n");
             body.append("- Run: ").append(runUrl).append("\n");
             body.append("- Failed job: ").append(jobHtmlUrl).append("\n\n");
 
@@ -146,9 +137,10 @@ public class HfCiFailureAnalyzer {
         }
     }
 
-    // ----------------- HF Inference caller -----------------
+    // ----------------- HF call with smarter errors + fallback -----------------
 
-    private static String analyzeWithHuggingFace(String token, String model, String prompt, int maxNewTokens) {
+    private static String analyzeWithHuggingFaceOrFallback(String token, String model, String prompt,
+                                                           String highlights, String fullLogs, int maxNewTokens) {
         try {
             HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(20)).build();
             String body = """
@@ -170,7 +162,6 @@ public class HfCiFailureAnalyzer {
                     .POST(HttpRequest.BodyPublishers.ofString(body))
                     .build();
 
-            // Retry on 503 (model loading) with backoff using "estimated_time" if available
             int maxAttempts = 5;
             for (int attempt = 1; attempt <= maxAttempts; attempt++) {
                 HttpResponse<String> resp = client.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
@@ -180,19 +171,30 @@ public class HfCiFailureAnalyzer {
                     String gen = extractJsonField(txt, "generated_text");
                     if (isBlank(gen)) gen = txt; // fallback raw
                     return "```\n" + gen.trim() + "\n```";
-                } else if (status == 503) {
+                }
+                if (status == 503) {
                     int sleepSec = parseEstimatedTimeSeconds(resp.body(), 15);
-                    sleepSec = Math.min(sleepSec + (attempt - 1) * 5, 60); // cap wait
-                    System.out.println("Model loading (503). Waiting " + sleepSec + "s and retrying (" + attempt + "/" + maxAttempts + ")...");
+                    sleepSec = Math.min(sleepSec + (attempt - 1) * 5, 60);
+                    System.out.println("HF 503 loading. Waiting " + sleepSec + "s and retrying (" + attempt + "/" + maxAttempts + ")...");
                     Thread.sleep(sleepSec * 1000L);
                     continue;
-                } else {
-                    return "HF Inference call failed: " + status + " " + resp.body();
                 }
+
+                String hint;
+                if (status == 401) {
+                    hint = "HF 401 Unauthorized: check HF_API_TOKEN.";
+                } else if (status == 403) {
+                    hint = "HF 403 Forbidden: token lacks access to the model (gated/private). Accept model terms or use an open model.";
+                } else if (status == 404) {
+                    hint = "HF 404 Not Found: HF_MODEL likely misspelled or not accessible. Try a public model (e.g., mistralai/Mistral-7B-Instruct-v0.2).";
+                } else {
+                    hint = "HF call failed: " + status;
+                }
+                return hint + "\n\nFalling back to rule-based analysis:\n" + ruleBasedAnalysis(highlights);
             }
-            return "HF Inference did not become ready after retries. Please retry the workflow later.";
+            return "HF did not become ready after retries.\n\nFalling back to rule-based analysis:\n" + ruleBasedAnalysis(highlights);
         } catch (Exception e) {
-            return "HF Inference call error: " + e.getMessage();
+            return "HF call error: " + e.getMessage() + "\n\nFalling back to rule-based analysis:\n" + ruleBasedAnalysis(highlights);
         }
     }
 
@@ -268,7 +270,205 @@ public class HfCiFailureAnalyzer {
         return count > 0 ? sb.toString().trim() : "(no lines matched common failure patterns)";
     }
 
-    // ----------------- GH helpers -----------------
+    // ----------------- Rule-based fallback -----------------
+
+    private record Rule(String name, Pattern pattern, String explanation, List<String> minimalFix, List<String> nextSteps) {}
+    private record DiagnosisEntry(Rule rule, int score, List<String> samples) {}
+    private record DiagnosisResult(List<DiagnosisEntry> entries) {}
+
+    private static String ruleBasedAnalysis(String highlights) {
+        List<Rule> rules = defaultRules();
+        DiagnosisResult diag = diagnose(highlights, rules);
+        StringBuilder sb = new StringBuilder();
+        if (diag.entries.isEmpty()) {
+            sb.append("- No specific rule matched. Generic triage:\n");
+            sb.append("  • Re-run failed jobs with verbose logging.\n");
+            sb.append("  • Verify toolchain versions (JDK/Node/Python) match local dev.\n");
+            sb.append("  • Clear caches (Actions cache, package managers).\n");
+            sb.append("  • Check permissions/secrets for private registries/tokens.\n");
+            sb.append("  • Confirm network access to central registries.\n");
+            return sb.toString();
+        }
+        int rank = 1;
+        for (DiagnosisEntry e : diag.entries) {
+            sb.append(rank++).append(") ").append(e.rule.name).append("\n");
+            if (!isBlank(e.rule.explanation)) {
+                sb.append("   - Why: ").append(e.rule.explanation).append("\n");
+            }
+            if (!e.samples.isEmpty()) {
+                sb.append("   - Evidence examples:\n");
+                for (String s : e.samples.subList(0, Math.min(3, e.samples.size()))) {
+                    sb.append("     • ").append(s).append("\n");
+                }
+            }
+            if (!e.rule.minimalFix.isEmpty()) {
+                sb.append("   - Minimal fix:\n");
+                for (String f : e.rule.minimalFix) sb.append("     • ").append(f).append("\n");
+            }
+            if (!e.rule.nextSteps.isEmpty()) {
+                sb.append("   - Next steps:\n");
+                for (String n : e.rule.nextSteps) sb.append("     • ").append(n).append("\n");
+            }
+            sb.append("\n");
+        }
+        return sb.toString();
+    }
+
+    private static DiagnosisResult diagnose(String highlights, List<Rule> rules) {
+        List<DiagnosisEntry> entries = new ArrayList<>();
+        List<String> lines = Arrays.asList(highlights.split("\\R"));
+        for (Rule r : rules) {
+            int score = 0;
+            List<String> samples = new ArrayList<>();
+            for (String ln : lines) {
+                if (r.pattern.matcher(ln).find()) {
+                    score++;
+                    if (samples.size() < 5) samples.add(ln);
+                }
+            }
+            if (score > 0) entries.add(new DiagnosisEntry(r, score, samples));
+        }
+        entries.sort((a, b) -> Integer.compare(b.score, a.score));
+        return new DiagnosisResult(entries);
+    }
+
+    private static List<Rule> defaultRules() {
+        List<Rule> rs = new ArrayList<>();
+        rs.add(new Rule(
+                "Java: ClassNotFound/NoClassDefFoundError",
+                Pattern.compile("ClassNotFoundException|NoClassDefFoundError|cannot find symbol.*class", Pattern.CASE_INSENSITIVE),
+                "Missing class due to wrong dependency/package/class name or build misconfiguration.",
+                List.of(
+                        "Check the class/package name and that it is compiled.",
+                        "Add/align the dependency providing the class (Maven/Gradle).",
+                        "Ensure test source set is compiled and included."
+                ),
+                List.of(
+                        "Search the missing class name in logs and locate which module should provide it.",
+                        "Run a clean build locally: mvn -U -e -X clean test or gradle --info clean test.",
+                        "Check classpath exclusions/relocation."
+                )
+        ));
+        rs.add(new Rule(
+                "Maven: artifact not found / dependency resolution",
+                Pattern.compile("Could not find artifact|Could not resolve dependencies|failure to find .* in .* was cached", Pattern.CASE_INSENSITIVE),
+                "Dependency cannot be resolved from configured repositories.",
+                List.of(
+                        "Verify artifact coordinates/version and repository availability.",
+                        "Add/repair mirrors/repositories; ensure credentials for private repos.",
+                        "Clear caches: rm -rf ~/.m2/repository; purge Actions cache key."
+                ),
+                List.of(
+                        "Enable debug: mvn -X -e -U -DskipTests=false test.",
+                        "Check rate limits/network/proxy/mirror settings."
+                )
+        ));
+        rs.add(new Rule(
+                "Gradle: Toolchain/daemon/resolve issues",
+                Pattern.compile("Could not resolve all files|Execution failed for task|Toolchain.*not found|Daemon (stopped|disappeared)", Pattern.CASE_INSENSITIVE),
+                "Gradle failed to resolve dependencies or required JDK toolchain.",
+                List.of(
+                        "Specify a compatible toolchain (setup-java Temurin 21).",
+                        "Invalidate caches; re-run with --refresh-dependencies."
+                ),
+                List.of(
+                        "Run gradle --stacktrace --info; verify JAVA_HOME and Gradle version."
+                )
+        ));
+        rs.add(new Rule(
+                "JUnit/Test assertion failures",
+                Pattern.compile("AssertionError|expected:.*but was:|Tests? failed:|There were test failures", Pattern.CASE_INSENSITIVE),
+                "Tests failed due to assertion mismatch or runtime failure.",
+                List.of(
+                        "Fix the test expectation or the code under test.",
+                        "If flaky, add retries or stabilize preconditions."
+                ),
+                List.of(
+                        "Open the failed test report (Surefire/Failsafe).",
+                        "Run the specific test locally with same JDK/flags."
+                )
+        ));
+        rs.add(new Rule(
+                "Node: npm/yarn dependency resolution",
+                Pattern.compile("npm ERR! ERESOLVE|npm ERR! code (EAI_AGAIN|ENOTFOUND|ETIMEDOUT)|yarn ERR!", Pattern.CASE_INSENSITIVE),
+                "Dependency conflict or network/DNS issue.",
+                List.of(
+                        "Pin versions or add overrides/resolutions.",
+                        "Retry with clean cache: npm ci or yarn --check-files.",
+                        "Ensure registry/network access."
+                ),
+                List.of(
+                        "Check which package has a conflicting peer dependency.",
+                        "Enable verbose logs: npm ci --verbose."
+                )
+        ));
+        rs.add(new Rule(
+                "Node: Cannot find module / TS compilation",
+                Pattern.compile("Cannot find module|TS\\d{4}:|TSError", Pattern.CASE_INSENSITIVE),
+                "Missing module/build output or TypeScript compile errors.",
+                List.of(
+                        "Install/build before use; fix TS errors.",
+                        "Align tsconfig path mappings."
+                ),
+                List.of(
+                        "Inspect exact TS error codes; run tsc --noEmit."
+                )
+        ));
+        rs.add(new Rule(
+                "Python: ModuleNotFoundError/ImportError",
+                Pattern.compile("ModuleNotFoundError|ImportError", Pattern.CASE_INSENSITIVE),
+                "Missing Python module or wrong environment.",
+                List.of(
+                        "Add dependency to requirements and reinstall.",
+                        "Check PYTHONPATH/venv and interpreter version."
+                ),
+                List.of(
+                        "pip install -U -r requirements.txt in a clean venv.",
+                        "Run pytest -vv to reproduce."
+                )
+        ));
+        rs.add(new Rule(
+                "OutOfMemory / resource limits",
+                Pattern.compile("OutOfMemoryError|Java heap space|Killed process.*out of memory|ENOMEM", Pattern.CASE_INSENSITIVE),
+                "Build/test ran out of memory or resources.",
+                List.of(
+                        "Reduce parallelism or memory usage; split tests.",
+                        "Use larger runner or increase memory flags (e.g., -Xmx)."
+                ),
+                List.of(
+                        "Check memory graphs; enable GC logs; confirm dataset sizes."
+                )
+        ));
+        rs.add(new Rule(
+                "Timeout / long-running step",
+                Pattern.compile("timeout|timed out after|No output has been received", Pattern.CASE_INSENSITIVE),
+                "Step exceeded time limits or stalled.",
+                List.of(
+                        "Increase timeout-minutes or add keep-alive logging.",
+                        "Optimize the long-running operation or add retries/backoff."
+                ),
+                List.of(
+                        "Identify the hanging sub-command; add --debug/--info.",
+                        "Check network calls and external service SLAs."
+                )
+        ));
+        rs.add(new Rule(
+                "Permission / auth / token missing",
+                Pattern.compile("Permission denied|access denied|401 Unauthorized|403 Forbidden|denied|Authentication failed", Pattern.CASE_INSENSITIVE),
+                "Insufficient permissions or missing/expired credentials.",
+                List.of(
+                        "Grant required scopes/permissions to GITHUB_TOKEN/secret.",
+                        "Configure credentials for private registries."
+                ),
+                List.of(
+                        "Validate token scopes; test with curl -I.",
+                        "Check SSO enforcement."
+                )
+        ));
+        return rs;
+    }
+
+    // ----------------- GH helpers & utils -----------------
 
     private static String ghApiJq(String endpoint, String jq) throws IOException, InterruptedException {
         return runProcess(new String[]{"gh", "api", endpoint, "--jq", jq}).trim();
@@ -289,14 +489,10 @@ public class HfCiFailureAnalyzer {
         return out;
     }
 
-    // ----------------- Utils -----------------
-
     private static String jsonString(String s) {
         return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n") + "\"";
     }
-
     private static String extractJsonField(String json, String field) {
-        // simplistic: search for "field":"..."
         String key = "\"" + field + "\"";
         int i = json.indexOf(key);
         if (i < 0) return "";
@@ -316,7 +512,6 @@ public class HfCiFailureAnalyzer {
         String val = json.substring(startQuote + 1, end);
         return val.replace("\\n", "\n").replace("\\\"", "\"");
     }
-
     private static String requireEnv(String key) {
         String v = System.getenv(key);
         if (isBlank(v)) throw new IllegalStateException("Missing environment variable: " + key);
@@ -329,7 +524,5 @@ public class HfCiFailureAnalyzer {
     private static int parseIntSafe(String s, int def) {
         try { return Integer.parseInt(s.trim()); } catch (Exception e) { return def; }
     }
-    private static boolean isBlank(String s) {
-        return s == null || s.trim().isEmpty();
-    }
+    private static boolean isBlank(String s) { return s == null || s.trim().isEmpty(); }
 }
