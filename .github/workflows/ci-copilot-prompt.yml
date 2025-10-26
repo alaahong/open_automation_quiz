@@ -9,6 +9,7 @@ on:
       - Build
       - Test
     types: [completed]
+
 permissions:
   actions: read
   contents: read
@@ -18,8 +19,8 @@ permissions:
 jobs:
   prompt:
     if: >
-      github.event.workflow_job.conclusion != 'success' &&
-      github.event.workflow_job.workflow_name != 'CI Copilot Failure Prompt'
+      github.event.workflow_run.conclusion != 'success' &&
+      github.event.workflow_run.name != 'CI Copilot Failure Prompt'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout (shallow)
@@ -38,12 +39,11 @@ jobs:
           # gh CLI 使用 GH_TOKEN；同时保留 GITHUB_TOKEN
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RUN_ID: ${{ github.event.workflow_job.run_id }}
-          JOB_ID: ${{ github.event.workflow_job.id }}
-          JOB_NAME: ${{ github.event.workflow_job.name }}
-          WORKFLOW_NAME: ${{ github.event.workflow_job.workflow_name }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          # JOB_ID/JOB_NAME 在 workflow_run 中不可用，留空由 Java 端兜底
           REPO: ${{ github.repository }}
           API_URL: ${{ github.api_url }}
           SERVER_URL: ${{ github.server_url }}
+          WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
         run: |
           java scripts/CiCopilotPrompt.java

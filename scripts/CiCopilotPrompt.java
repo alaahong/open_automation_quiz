@@ -21,7 +21,7 @@ public class CiCopilotPrompt {
         try {
             String repo = requireEnv("REPO");
             String runId = requireEnv("RUN_ID");
-            String jobId = getenvOr("JOB_ID", "");
+            String jobId = getenvOr("JOB_ID", "");         // may be empty on workflow_run
             String jobName = getenvOr("JOB_NAME", "(unknown)");
             String workflowName = getenvOr("WORKFLOW_NAME", "(unknown)");
             String serverUrl = getenvOr("SERVER_URL", "https://github.com");
@@ -38,15 +38,22 @@ public class CiCopilotPrompt {
             String prNumStr = ghApiJq("repos/" + repo + "/actions/runs/" + runId, "(.pull_requests[0].number // 0)");
             int prNumber = parseIntSafe(prNumStr, 0);
 
-            // Find current job html_url and build failed steps summary
+            // Jobs in this run
             String jobsJson = ghApi("repos/" + repo + "/actions/runs/" + runId + "/jobs?per_page=100");
-            String jobHtmlUrl = ghApiJqFromInput(jobsJson,
-                    "([.jobs[] | select(.id == " + jobId + ") | .html_url] | first // \"\")");
-            if (isBlank(jobHtmlUrl)) {
-                // fallback to generic logs page
-                jobHtmlUrl = runUrl;
-            }
 
+            // Preferred failed job link:
+            String jobHtmlUrl;
+            if (!isBlank(jobId)) {
+                jobHtmlUrl = ghApiJqFromInput(jobsJson,
+                        "([.jobs[] | select(.id == " + jobId + ") | .html_url] | first // \"\")");
+            } else {
+                // No JOB_ID in workflow_run; pick the first failed job
+                jobHtmlUrl = ghApiJqFromInput(jobsJson,
+                        "([.jobs[] | select(.conclusion != \"success\" and .conclusion != null) | .html_url] | first // \"\")");
+            }
+            if (isBlank(jobHtmlUrl)) jobHtmlUrl = runUrl;
+
+            // Failed jobs/steps summary
             String jobsSummary = ghApiJqFromInput(jobsJson,
                     "([.jobs[] " +
                             " | select(.conclusion != \"success\" and .conclusion != null) " +
@@ -75,7 +82,7 @@ public class CiCopilotPrompt {
                     "Run conclusion: " + runConclusion
             ));
 
-            // Since we do not embed logs, instruct maintainers to copy/paste the key error lines
+            // Copilot instruction (links-only flow)
             String instruction = """
             Copilot，请基于上下文信息以及维护者随后粘贴到本线程中的关键错误行，给出：
             1) 最可能的1~3个根因（按置信度排序，引用粘贴的关键日志行/文件路径/命令输出）

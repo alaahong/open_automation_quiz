@@ -33,6 +33,6 @@ class AutomationApplicationTest {
 
     @Test
     void testClassExists() {
-        assertDoesNotThrow(() -> Class.forName("cn.ianzhang.automation.AutomationApplication2"));
+        assertDoesNotThrow(() -> Class.forName("cn.ianzhang.automation.AutomationApplication"));
     }
 }
