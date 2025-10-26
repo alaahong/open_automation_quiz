@@ -9,7 +9,6 @@ on:
       - Build
       - Test
     types: [completed]
-
 permissions:
   actions: read
   contents: read
@@ -19,7 +18,8 @@ permissions:
 jobs:
   prompt:
     if: >
-      github.event.workflow_run.conclusion != 'success'
+      github.event.workflow_job.conclusion != 'success' &&
+      github.event.workflow_job.workflow_name != 'CI Copilot Failure Prompt'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout (shallow)
@@ -32,35 +32,67 @@ jobs:
         with:
           node-version: 20
 
-      - name: Download logs for failed run
+      - name: Download job/run logs for failed run
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO_FULL: ${{ github.repository }}
+          API_URL: ${{ github.api_url }}
+          RUN_ID: ${{ github.event.workflow_job.run_id }}
+          JOB_ID: ${{ github.event.workflow_job.id }}
         run: |
+          set -euo pipefail
           mkdir -p logs
-          curl -sSL \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            "${{ github.api_url }}/repos/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }}/logs" \
-            -o logs.zip || true
 
-          if [ -f logs.zip ]; then
-            unzip -q logs.zip -d logs || true
+          echo "Downloading job logs for JOB_ID=${JOB_ID} ..."
+          curl -sSL -D headers_job.txt \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "${API_URL}/repos/${REPO_FULL}/actions/jobs/${JOB_ID}/logs" \
+            -o job_logs_payload || true
+
+          # 尝试解压为zip；如果不是zip，就按文本处理
+          if unzip -q job_logs_payload -d logs/job 2>/dev/null; then
+            echo "Unzipped job logs."
+            find logs/job -type f -name "*.txt" -print0 | xargs -0 -I{} sh -c 'echo -e "\n==== {} ====\n"; tail -n 2000 "{}"' > logs/job_combined.txt || true
+          else
+            echo "Job logs not a zip; treating as plain text."
+            mv job_logs_payload logs/job.log || true
+            if [ -f logs/job.log ]; then
+              tail -n 5000 logs/job.log > logs/job_combined.txt || true
+            fi
           fi
 
-          # 合并每个 step 的末尾日志，限制体量
-          find logs -type f -name "*.txt" -print0 | xargs -0 -I{} sh -c 'echo -e "\n==== {} ====\n"; tail -n 2000 "{}"' > logs/combined.txt || true
+          echo "Downloading run logs for RUN_ID=${RUN_ID} ..."
+          curl -sSL \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "${API_URL}/repos/${REPO_FULL}/actions/runs/${RUN_ID}/logs" \
+            -o run_logs.zip || true
 
-          if [ ! -s logs/combined.txt ]; then
-            echo "No step logs were available to download for run ${{ github.event.workflow_run.id }}." > logs/combined.txt
+          if [ -f run_logs.zip ]; then
+            unzip -q run_logs.zip -d logs/run || true
+            find logs/run -type f -name "*.txt" -print0 | xargs -0 -I{} sh -c 'echo -e "\n==== {} ====\n"; tail -n 2000 "{}"' > logs/run_combined.txt || true
+          fi
+
+          # 生成最终合并文件，优先 job，再补充 run
+          if [ -s logs/job_combined.txt ] && [ -s logs/run_combined.txt ]; then
+            { echo "=== JOB LOG TAIL ==="; cat logs/job_combined.txt; echo; echo "=== RUN LOG TAIL ==="; cat logs/run_combined.txt; } > logs/combined.txt
+          elif [ -s logs/job_combined.txt ]; then
+            mv logs/job_combined.txt logs/combined.txt
+          elif [ -s logs/run_combined.txt ]; then
+            mv logs/run_combined.txt logs/combined.txt
+          else
+            echo "No logs were available to download for run ${RUN_ID} / job ${JOB_ID}." > logs/combined.txt
           fi
 
       - name: Post PR/Issue comment with Copilot-ready prompt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_ID: ${{ github.event.workflow_job.run_id }}
+          JOB_ID: ${{ github.event.workflow_job.id }}
+          JOB_NAME: ${{ github.event.workflow_job.name }}
+          WORKFLOW_NAME: ${{ github.event.workflow_job.workflow_name }}
           REPO: ${{ github.repository }}
-          JOB_NAME: all
-          WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
           API_URL: ${{ github.api_url }}
           SERVER_URL: ${{ github.server_url }}
         run: node scripts/ci_copilot_prompt.mjs
