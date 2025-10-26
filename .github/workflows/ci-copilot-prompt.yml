@@ -2,8 +2,6 @@ name: CI Hugging Face Failure Analyzer
 
 on:
   workflow_run:
-    # IMPORTANT: list the workflows you want to monitor for completion
-    # Replace the example names below with your actual workflow names.
     workflows:
       - CI
       - Build
@@ -99,7 +97,7 @@ jobs:
             echo "No logs were available to download for run ${RUN_ID}." > logs/combined.txt
           fi
 
-      - name: Post PR/Issue comment with Hugging Face analysis (highlights only)
+      - name: Post PR/Issue comment with HF analysis (highlights + fallback)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -108,9 +106,9 @@ jobs:
           API_URL: ${{ github.api_url }}
           SERVER_URL: ${{ github.server_url }}
           WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
-          # Hugging Face
           HF_API_TOKEN: ${{ secrets.HF_API_TOKEN }}
-          HF_MODEL: ${{ vars.HF_MODEL || 'meta-llama/Llama-3.2-3B-Instruct' }}
+          # Prefer known, ungated default to avoid 404s:
+          HF_MODEL: ${{ vars.HF_MODEL || 'mistralai/Mistral-7B-Instruct-v0.2' }}
           ANALYZER_MAX_HIGHLIGHTS: ${{ vars.ANALYZER_MAX_HIGHLIGHTS || '200' }}
           HF_MAX_NEW_TOKENS: ${{ vars.HF_MAX_NEW_TOKENS || '800' }}
         run: |
