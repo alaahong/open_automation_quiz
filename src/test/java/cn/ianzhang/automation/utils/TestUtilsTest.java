@@ -23,6 +23,11 @@ class TestUtilsTest {
     }
 
     @Test
+    void positiveVerificationReturnsFalseForNegativeNumber2() {
+        assertFalse(TestUtils.positiveVerification(1-3));
+    }
+
+    @Test
     void positiveVerificationReturnsTrueForLargePositiveNumber() {
         assertTrue(TestUtils.positiveVerification(1000000));
     }
