@@ -1,7 +1,16 @@
-/* Java 21 Hugging Face Inference-based CI failure analyzer (highlights-only) with rule-based fallback.
+/* Java 21 Hugging Face Inference-based CI failure analyzer (highlights-only) with rule-based fallback + preflight.
  * - Extracts high-signal error lines (first N matches) from combined logs.
+ * - PRE-FLIGHT: probes the configured HF model with a tiny request to detect 404/401/403 early,
+ *   auto-falls back to a public model list if inaccessible.
  * - Calls Hugging Face Inference API (text-generation) to produce: root causes, minimal fix, next steps.
  * - If HF returns non-2xx (e.g., 404/401/403/503), falls back to a built-in rule engine so PR still receives suggestions.
+ *
+ * Optional env:
+ * - HF_MODEL: primary model to use (trimmed). Default "mistralai/Mistral-7B-Instruct-v0.2"
+ * - HF_FALLBACK_MODELS: comma-separated fallback list, e.g.:
+ *     "mistralai/Mistral-7B-Instruct-v0.2,microsoft/Phi-3-mini-4k-instruct,Qwen/Qwen2-7B-Instruct,bigcode/starcoder2-3b"
+ *   If not set, a sane default list is used (see DEFAULT_FALLBACKS).
+ * - HF_MAX_NEW_TOKENS, ANALYZER_MAX_HIGHLIGHTS (see workflow)
  */
 import java.io.*;
 import java.net.URI;
@@ -16,17 +25,37 @@ public class HfCiFailureAnalyzer {
     private static final int BODY_MAX_CHARS = 60000;
     private static final int LOG_MAX_CHARS = 120000;
 
+    private static final String[] DEFAULT_FALLBACKS = new String[]{
+            "mistralai/Mistral-7B-Instruct-v0.2",
+            "microsoft/Phi-3-mini-4k-instruct",
+            "Qwen/Qwen2-7B-Instruct",
+            "bigcode/starcoder2-3b"
+    };
+
     public static void main(String[] args) {
         try {
             String repo = requireEnv("REPO");
             String runId = requireEnv("RUN_ID");
-            String workflowName = getenvOr("WORKFLOW_NAME", "(unknown)");
-            String serverUrl = getenvOr("SERVER_URL", "https://github.com");
+            String workflowName = getenvOr("WORKFLOW_NAME", "(unknown)").trim();
+            String serverUrl = getenvOr("SERVER_URL", "https://github.com").trim();
             int highlightMax = parseIntSafe(getenvOr("ANALYZER_MAX_HIGHLIGHTS", "200"), 200);
             int hfMaxNew = parseIntSafe(getenvOr("HF_MAX_NEW_TOKENS", "800"), 800);
 
-            String hfToken = getenvOr("HF_API_TOKEN", "");
-            String hfModel = getenvOr("HF_MODEL", "mistralai/Mistral-7B-Instruct-v0.2");
+            String hfToken = getenvOr("HF_API_TOKEN", "").trim();
+            String hfModelRaw = getenvOr("HF_MODEL", "mistralai/Mistral-7B-Instruct-v0.2");
+            String hfModel = hfModelRaw == null ? "" : hfModelRaw.trim();
+
+            // Prepare fallback list (trim each)
+            List<String> fallbacks = new ArrayList<>();
+            String cfgFallbacks = getenvOr("HF_FALLBACK_MODELS", "");
+            if (!isBlank(cfgFallbacks)) {
+                for (String s : cfgFallbacks.split(",")) {
+                    String t = s.trim();
+                    if (!t.isEmpty()) fallbacks.add(t);
+                }
+            } else {
+                fallbacks.addAll(Arrays.asList(DEFAULT_FALLBACKS));
+            }
 
             // Run details
             String runUrl = ghApiJq("repos/" + repo + "/actions/runs/" + runId, ".html_url");
@@ -66,6 +95,41 @@ public class HfCiFailureAnalyzer {
             String combinedLogs = readCombinedLogs();
             String errorHighlights = extractErrorHighlights(combinedLogs, highlightMax);
 
+            // HF model preflight
+            String chosenModel = hfModel;
+            String preflightDiag;
+            if (isBlank(hfToken)) {
+                preflightDiag = "HF preflight: skipped (HF_API_TOKEN missing)";
+            } else {
+                PreflightResult pr = preflightHF(hfToken, chosenModel);
+                if (pr.ok) {
+                    preflightDiag = "HF preflight: OK (" + chosenModel + ") status=" + pr.status + (pr.note.isEmpty() ? "" : " - " + pr.note);
+                } else {
+                    StringBuilder diag = new StringBuilder();
+                    diag.append("HF preflight: FAILED for ").append(chosenModel)
+                            .append(" (status=").append(pr.status).append(") - ").append(pr.note)
+                            .append("; trying fallbacks: ");
+                    boolean switched = false;
+                    for (int i = 0; i < fallbacks.size(); i++) {
+                        String fb = fallbacks.get(i);
+                        if (fb.equalsIgnoreCase(chosenModel)) continue; // skip same
+                        PreflightResult prFb = preflightHF(hfToken, fb);
+                        diag.append(fb).append("[").append(prFb.status).append(prFb.ok ? "✔" : "✖").append("]");
+                        if (i < fallbacks.size() - 1) diag.append(", ");
+                        if (prFb.ok && !switched) {
+                            chosenModel = fb;
+                            switched = true;
+                        }
+                    }
+                    if (switched) {
+                        diag.append(" -> using fallback: ").append(chosenModel);
+                    } else {
+                        diag.append(" -> no accessible fallback, will use rule-based fallback if HF call fails.");
+                    }
+                    preflightDiag = diag.toString();
+                }
+            }
+
             String context = String.join("\n", List.of(
                     "Repository: " + repo,
                     "Workflow: " + workflowName,
@@ -75,7 +139,9 @@ public class HfCiFailureAnalyzer {
                     "Head branch: " + headBranch,
                     "Commit SHA: " + headSha,
                     "Run conclusion: " + runConclusion,
-                    "HF model: " + hfModel
+                    "HF model (requested): " + hfModel,
+                    "HF model (chosen): " + chosenModel,
+                    preflightDiag
             ));
 
             String prompt = buildPrompt(context, jobsSummary, errorHighlights);
@@ -86,16 +152,16 @@ public class HfCiFailureAnalyzer {
                         "Please add HF_API_TOKEN in repository Secrets and re-run this workflow.\n\n" +
                         ruleBasedAnalysis(errorHighlights);
             } else {
-                analysis = analyzeWithHuggingFaceOrFallback(hfToken, hfModel, prompt, errorHighlights, combinedLogs, hfMaxNew);
+                analysis = analyzeWithHuggingFaceOrFallback(hfToken, chosenModel, prompt, errorHighlights, combinedLogs, hfMaxNew);
             }
 
             // Build comment body
             StringBuilder body = new StringBuilder();
-            body.append("🤖 CI failure: Hugging Face Inference analysis (with rule-based fallback)\n\n");
+            body.append("🤖 CI failure: Hugging Face Inference analysis (with preflight and rule-based fallback)\n\n");
             body.append("- Run: ").append(runUrl).append("\n");
             body.append("- Failed job: ").append(jobHtmlUrl).append("\n\n");
 
-            body.append("Context:\n```\n").append(context).append("\n```\n\n");
+            body.append("Context (includes HF preflight):\n```\n").append(context).append("\n```\n\n");
             body.append("Failed jobs/steps summary:\n```\n").append(jobsSummary).append("\n```\n\n");
             body.append("Error Highlights (first ").append(highlightMax).append(" matching lines):\n```txt\n")
                     .append(errorHighlights).append("\n```\n\n");
@@ -195,6 +261,46 @@ public class HfCiFailureAnalyzer {
             return "HF did not become ready after retries.\n\nFalling back to rule-based analysis:\n" + ruleBasedAnalysis(highlights);
         } catch (Exception e) {
             return "HF call error: " + e.getMessage() + "\n\nFalling back to rule-based analysis:\n" + ruleBasedAnalysis(highlights);
+        }
+    }
+
+    // ----------------- HF preflight -----------------
+
+    private static class PreflightResult {
+        final boolean ok;
+        final int status;
+        final String note;
+        PreflightResult(boolean ok, int status, String note) {
+            this.ok = ok; this.status = status; this.note = note == null ? "" : note;
+        }
+    }
+
+    // Treat 2xx and 503 (loading) as accessible. 401/403/404 -> not accessible with reason.
+    private static PreflightResult preflightHF(String token, String model) {
+        String trimmedModel = model == null ? "" : model.trim();
+        if (trimmedModel.isEmpty()) return new PreflightResult(false, 404, "empty model name");
+        try {
+            HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
+            String body = """
+            {"inputs":"preflight","parameters":{"max_new_tokens":1,"temperature":0.0,"return_full_text":false}}
+            """;
+            HttpRequest req = HttpRequest.newBuilder()
+                    .uri(URI.create("https://api-inference.huggingface.co/models/" + trimmedModel))
+                    .timeout(Duration.ofSeconds(30))
+                    .header("Authorization", "Bearer " + token)
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(body))
+                    .build();
+            HttpResponse<String> resp = client.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            int sc = resp.statusCode();
+            if (sc >= 200 && sc < 300) return new PreflightResult(true, sc, "ready");
+            if (sc == 503) return new PreflightResult(true, sc, "loading");
+            if (sc == 401) return new PreflightResult(false, sc, "unauthorized token");
+            if (sc == 403) return new PreflightResult(false, sc, "forbidden (gated/private or no terms accepted)");
+            if (sc == 404) return new PreflightResult(false, sc, "not found (typo or no access)");
+            return new PreflightResult(false, sc, "unexpected status");
+        } catch (Exception e) {
+            return new PreflightResult(false, -1, "preflight error: " + e.getMessage());
         }
     }
 

@@ -24,12 +24,12 @@ class TestUtilsTest {
 
     @Test
     void positiveVerificationReturnsFalseForNegativeNumber2() {
-        assertFalse(TestUtils.positiveVerification(1-3));
+        assertFalse(TestUtils.positiveVerification(1 - 3));
     }
 
     @Test
     void positiveVerificationReturnsTrueForLargePositiveNumber() {
-        assertTrue(TestUtils.positiveVerification(10000000));
+        assertTrue(TestUtils.positiveVerification(100000000));
     }
 
     @Test
