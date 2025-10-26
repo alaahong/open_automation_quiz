@@ -1,7 +1,13 @@
 name: CI Copilot Failure Prompt
 
 on:
-  workflow_job:
+  workflow_run:
+    # IMPORTANT: list the workflows you want to monitor for completion
+    # Replace the example names below with your actual workflow names.
+    workflows:
+      - CI
+      - Build
+      - Test
     types: [completed]
 
 permissions:
@@ -13,8 +19,7 @@ permissions:
 jobs:
   prompt:
     if: >
-      github.event.workflow_job.conclusion != 'success' &&
-      github.event.workflow_job.workflow_name != 'CI Copilot Failure Prompt'
+      github.event.workflow_run.conclusion != 'success'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout (shallow)
@@ -35,7 +40,7 @@ jobs:
           curl -sSL \
             -H "Authorization: Bearer $GH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
-            "${{ github.api_url }}/repos/${{ github.repository }}/actions/runs/${{ github.event.workflow_job.run_id }}/logs" \
+            "${{ github.api_url }}/repos/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }}/logs" \
             -o logs.zip || true
 
           if [ -f logs.zip ]; then
@@ -46,16 +51,16 @@ jobs:
           find logs -type f -name "*.txt" -print0 | xargs -0 -I{} sh -c 'echo -e "\n==== {} ====\n"; tail -n 2000 "{}"' > logs/combined.txt || true
 
           if [ ! -s logs/combined.txt ]; then
-            echo "No step logs were available to download for run ${{ github.event.workflow_job.run_id }}." > logs/combined.txt
+            echo "No step logs were available to download for run ${{ github.event.workflow_run.id }}." > logs/combined.txt
           fi
 
       - name: Post PR/Issue comment with Copilot-ready prompt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RUN_ID: ${{ github.event.workflow_job.run_id }}
-          JOB_NAME: ${{ github.event.workflow_job.name }}
-          WORKFLOW_NAME: ${{ github.event.workflow_job.workflow_name }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
           REPO: ${{ github.repository }}
+          JOB_NAME: all
+          WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
           API_URL: ${{ github.api_url }}
           SERVER_URL: ${{ github.server_url }}
         run: node scripts/ci_copilot_prompt.mjs
