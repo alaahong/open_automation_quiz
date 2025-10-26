@@ -8,6 +8,7 @@ const {
     SERVER_URL = 'https://github.com',
     RUN_ID,
     REPO,
+    JOB_ID,
     JOB_NAME,
     WORKFLOW_NAME,
 } = process.env;
@@ -42,15 +43,31 @@ async function ghPost(url, body) {
     return res.json();
 }
 
-function readCombinedLogs(maxChars = 120_000) {
-    const p = path.join(process.cwd(), 'logs', 'combined.txt');
-    if (!fs.existsSync(p)) return `Logs file not found at ${p}`;
+function readTextSafe(p, maxChars = 120_000) {
+    if (!fs.existsSync(p)) return '';
     let text = fs.readFileSync(p, 'utf8');
     if (text.length > maxChars) {
         text = text.slice(-maxChars);
         text = `...[truncated to last ${maxChars} chars]...\n` + text;
     }
     return text;
+}
+
+function readCombinedLogs() {
+    const combined = readTextSafe(path.join(process.cwd(), 'logs', 'combined.txt'));
+    return combined || 'No combined logs were captured.';
+}
+
+function extractErrorHighlights(text, maxLines = 200) {
+    if (!text) return '(no highlights)';
+    const lines = text.split(/\r?\n/);
+    const re = /\b(error|failed|failure|exception|traceback|no classdef|classnotfound|assertion(error)?|segmentation fault|build failed|npm ERR!|yarn ERR!|gradle|maven|test failed|cannot find symbol|undefined reference|stack trace)\b/i;
+    const hit = [];
+    for (const ln of lines) {
+        if (re.test(ln)) hit.push(ln);
+        if (hit.length >= maxLines) break;
+    }
+    return hit.length ? hit.join('\n') : '(no highlights matched common failure patterns)';
 }
 
 function mkRunLink(run) {
@@ -91,11 +108,12 @@ async function commentOnPr(prNumber, body) {
     return ghPost(url, { body });
 }
 
-function buildCopilotPromptBody({ run, jobsSummary, combinedLogs }) {
+function buildCopilotPromptBody({ run, jobsSummary, combinedLogs, errorHighlights }) {
     const ctx = [
         `Repository: ${REPO}`,
         `Workflow: ${WORKFLOW_NAME}`,
         `Job: ${JOB_NAME}`,
+        `Job ID: ${JOB_ID}`,
         `Run ID: ${RUN_ID}`,
         `Run URL: ${mkRunLink(run)}`,
         `Event: ${run?.event}`,
@@ -105,13 +123,11 @@ function buildCopilotPromptBody({ run, jobsSummary, combinedLogs }) {
     ].join('\n');
 
     const instruction = `
-请求 GitHub Copilot：
-请基于上下文与日志，输出：
-1) 失败现象与最可能根因（列 1~3 条，按置信度排序）
-2) 最小修复方案（尽量小的改动能使 CI 通过，给出具体命令或代码修改示意）
-3) 进一步验证与排查步骤（具体到命令/文件/日志关键字）
-如涉及依赖/缓存/权限/并发/超时等常见问题，请直指要害并给通用修复模板。
-`;
+Copilot，请基于下面的上下文与日志进行深入分析，并在本线程直接给出：
+1) 最可能的1~3个根因（按置信度排序，引用关键日志行/文件路径/命令输出）
+2) 最小修复方案（尽量小的改动即可让 CI 通过，给出具体命令或代码修改示意）
+3) 如需继续排查，给出下一步验证步骤（具体到命令/文件/应关注的日志关键字）
+若属于依赖/缓存/权限/并发/超时/环境差异/测试不确定性等常见问题，请直指要害并给出相应修复模板。`;
 
     const combinedLogsFenced = [
         '--- BEGIN LOG TAIL (combined) ---',
@@ -122,12 +138,12 @@ function buildCopilotPromptBody({ run, jobsSummary, combinedLogs }) {
     ].join('\n');
 
     const MAX = 60_000;
-    let body = `⚠️ CI 失败：已为 GitHub Copilot 准备上下文与日志
+    let body = `⚠️ CI 失败：已为 GitHub Copilot 准备上下文、错误高亮信息与日志
 
 - Run: ${mkRunLink(run)}
 - Workflow: ${WORKFLOW_NAME} · Job: ${JOB_NAME}
 
-在此对话中使用“Ask Copilot/请求 Copilot”或将该对话分配给 Copilot，可在当前线程获得自动分析与修复建议。（Copilot 的行为与权限受 GitHub 平台限制，且不会读取仓库 Actions secrets。）
+在此评论下点击“Ask Copilot/请求 Copilot”（或将对话分配给 Copilot），即可让 Copilot 基于以下上下文输出“根因 + 最小修复 + 验证步骤”。
 
 上下文：
 \`\`\`
@@ -139,7 +155,12 @@ ${ctx}
 ${jobsSummary || '(no summary)'}
 \`\`\`
 
-推荐给 Copilot 的提示词：
+Error Highlights（从日志中提取的高信号行）：
+\`\`\`txt
+${errorHighlights}
+\`\`\`
+
+推荐给 Copilot 的提示词（点击“Ask Copilot”后它会参考本段并直接作答）：
 \`\`\`
 ${instruction.trim()}
 \`\`\`
@@ -159,9 +180,10 @@ async function main() {
         const jobs = await ghGet(`${API_URL}/repos/${REPO}/actions/runs/${RUN_ID}/jobs?per_page=100`);
 
         const combinedLogs = readCombinedLogs();
+        const errorHighlights = extractErrorHighlights(combinedLogs);
         const jobsSummary = summarizeFailedSteps(jobs);
 
-        const commentBody = buildCopilotPromptBody({ run, jobsSummary, combinedLogs });
+        const commentBody = buildCopilotPromptBody({ run, jobsSummary, combinedLogs, errorHighlights });
         const prNumber = await getPrNumberFromRun(run);
 
         if (prNumber) {

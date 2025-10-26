@@ -9,7 +9,6 @@ on:
       - Build
       - Test
     types: [completed]
-
 permissions:
   actions: read
   contents: read
@@ -19,7 +18,8 @@ permissions:
 jobs:
   prompt:
     if: >
-      github.event.workflow_run.conclusion != 'success'
+      github.event.workflow_job.conclusion != 'success' &&
+      github.event.workflow_job.workflow_name != 'CI Copilot Failure Prompt'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout (shallow)
@@ -27,40 +27,23 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
         with:
-          node-version: 20
+          distribution: temurin
+          java-version: '21'
 
-      - name: Download logs for failed run
+      - name: Post PR/Issue comment with Copilot-ready prompt (links only)
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          mkdir -p logs
-          curl -sSL \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            "${{ github.api_url }}/repos/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }}/logs" \
-            -o logs.zip || true
-
-          if [ -f logs.zip ]; then
-            unzip -q logs.zip -d logs || true
-          fi
-
-          # 合并每个 step 的末尾日志，限制体量
-          find logs -type f -name "*.txt" -print0 | xargs -0 -I{} sh -c 'echo -e "\n==== {} ====\n"; tail -n 2000 "{}"' > logs/combined.txt || true
-
-          if [ ! -s logs/combined.txt ]; then
-            echo "No step logs were available to download for run ${{ github.event.workflow_run.id }}." > logs/combined.txt
-          fi
-
-      - name: Post PR/Issue comment with Copilot-ready prompt
-        env:
+          # gh CLI 使用 GH_TOKEN；同时保留 GITHUB_TOKEN
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RUN_ID: ${{ github.event.workflow_run.id }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_ID: ${{ github.event.workflow_job.run_id }}
+          JOB_ID: ${{ github.event.workflow_job.id }}
+          JOB_NAME: ${{ github.event.workflow_job.name }}
+          WORKFLOW_NAME: ${{ github.event.workflow_job.workflow_name }}
           REPO: ${{ github.repository }}
-          JOB_NAME: all
-          WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
           API_URL: ${{ github.api_url }}
           SERVER_URL: ${{ github.server_url }}
-        run: node scripts/ci_copilot_prompt.mjs
+        run: |
+          java scripts/CiCopilotPrompt.java
