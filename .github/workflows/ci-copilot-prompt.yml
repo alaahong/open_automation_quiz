@@ -108,7 +108,7 @@ jobs:
           WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
           HF_API_TOKEN: ${{ secrets.HF_API_TOKEN }}
           # Prefer known, ungated default to avoid 404s:
-          HF_MODEL: ${{ vars.HF_MODEL || 'mistralai/Mistral-7B-Instruct-v0.2' }}
+          HF_MODEL: ${{ vars.HF_MODEL || 'HuggingFaceTB/SmolLM3-3B' }}
           ANALYZER_MAX_HIGHLIGHTS: ${{ vars.ANALYZER_MAX_HIGHLIGHTS || '200' }}
           HF_MAX_NEW_TOKENS: ${{ vars.HF_MAX_NEW_TOKENS || '800' }}
         run: |
