@@ -30,4 +30,9 @@ class AutomationApplicationTest {
     void testClassInitialization() {
         assertDoesNotThrow(AutomationApplication::new);
     }
+
+    @Test
+    void testClassExists() {
+        assertDoesNotThrow(() -> Class.forName("cn.ianzhang.automation.AutomationApplication2"));
+    }
 }
