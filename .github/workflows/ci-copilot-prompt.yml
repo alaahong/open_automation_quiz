@@ -6,7 +6,7 @@ on:
       - CI
       - Build
       - Test
-    types: [completed]
+    types: [ completed ]
 
 permissions:
   actions: read
