@@ -21,7 +21,8 @@ public class CiCopilotPrompt {
         try {
             String repo = requireEnv("REPO");
             String runId = requireEnv("RUN_ID");
-            String jobId = getenvOr("JOB_ID", "");         // may be empty on workflow_run
+            // JOB_ID/JOB_NAME may be empty when triggered by workflow_run
+            String jobId = getenvOr("JOB_ID", "");
             String jobName = getenvOr("JOB_NAME", "(unknown)");
             String workflowName = getenvOr("WORKFLOW_NAME", "(unknown)");
             String serverUrl = getenvOr("SERVER_URL", "https://github.com");
@@ -38,35 +39,32 @@ public class CiCopilotPrompt {
             String prNumStr = ghApiJq("repos/" + repo + "/actions/runs/" + runId, "(.pull_requests[0].number // 0)");
             int prNumber = parseIntSafe(prNumStr, 0);
 
-            // Jobs in this run
-            String jobsJson = ghApi("repos/" + repo + "/actions/runs/" + runId + "/jobs?per_page=100");
-
-            // Preferred failed job link:
+            // Resolve failed job URL:
+            String jobsEndpoint = "repos/" + repo + "/actions/runs/" + runId + "/jobs?per_page=100";
             String jobHtmlUrl;
             if (!isBlank(jobId)) {
-                jobHtmlUrl = ghApiJqFromInput(jobsJson,
+                jobHtmlUrl = ghApiJq(jobsEndpoint,
                         "([.jobs[] | select(.id == " + jobId + ") | .html_url] | first // \"\")");
             } else {
-                // No JOB_ID in workflow_run; pick the first failed job
-                jobHtmlUrl = ghApiJqFromInput(jobsJson,
+                jobHtmlUrl = ghApiJq(jobsEndpoint,
                         "([.jobs[] | select(.conclusion != \"success\" and .conclusion != null) | .html_url] | first // \"\")");
             }
             if (isBlank(jobHtmlUrl)) jobHtmlUrl = runUrl;
 
-            // Failed jobs/steps summary
-            String jobsSummary = ghApiJqFromInput(jobsJson,
-                    "([.jobs[] " +
-                            " | select(.conclusion != \"success\" and .conclusion != null) " +
-                            " | \"Job: \\(.name)\\n\" " +
-                            "+ \"Conclusion: \\(.conclusion)\\n\" " +
-                            "+ \"Started: \\(.started_at)\\n\" " +
-                            "+ \"Completed: \\(.completed_at)\\n\" " +
-                            "+ \"Failed steps:\\n\" " +
-                            "+ ( [ (.steps // [])[] " +
-                            "| select(.conclusion != \"success\" and .conclusion != null) " +
-                            "| \"- \\(.name) (conclusion: \\(.conclusion))\" ] " +
-                            " | if length>0 then join(\"\\n\") else \"(none listed)\" end )" +
-                            "] | if length>0 then join(\"\\n\\n\") else \"(no summary)\" end)"
+            // Failed jobs/steps summary (names and conclusions only)
+            String jobsSummary = ghApiJq(jobsEndpoint,
+                    "([.jobs[] "
+                            + "| select(.conclusion != \"success\" and .conclusion != null) "
+                            + "| \"Job: \\(.name)\\n\" "
+                            + "+ \"Conclusion: \\(.conclusion)\\n\" "
+                            + "+ \"Started: \\(.started_at)\\n\" "
+                            + "+ \"Completed: \\(.completed_at)\\n\" "
+                            + "+ \"Failed steps:\\n\" "
+                            + "+ ( [ (.steps // [])[] "
+                            + "| select(.conclusion != \"success\" and .conclusion != null) "
+                            + "| \"- \\(.name) (conclusion: \\(.conclusion))\" ] "
+                            + " | if length>0 then join(\"\\n\") else \"(none listed)\" end )"
+                            + "] | if length>0 then join(\"\\n\\n\") else \"(no summary)\" end)"
             );
 
             String ctx = String.join("\n", List.of(
@@ -144,31 +142,8 @@ public class CiCopilotPrompt {
 
     // Helpers
 
-    private static String ghApi(String endpoint) throws IOException, InterruptedException {
-        return runProcess(new String[]{"gh", "api", endpoint});
-    }
-
     private static String ghApiJq(String endpoint, String jq) throws IOException, InterruptedException {
         return runProcess(new String[]{"gh", "api", endpoint, "--jq", jq}).trim();
-    }
-
-    private static String ghApiJqFromInput(String json, String jq) throws IOException, InterruptedException {
-        // gh api can read from stdin using "-"
-        ProcessBuilder pb = new ProcessBuilder("gh", "api", "--method", "GET", "--input", "-", "--jq", jq);
-        Map<String, String> env = pb.environment();
-        if (isBlank(env.get("GH_TOKEN"))) {
-            String gt = env.getOrDefault("GITHUB_TOKEN", "");
-            if (!isBlank(gt)) env.put("GH_TOKEN", gt);
-        }
-        pb.redirectErrorStream(true);
-        Process p = pb.start();
-        try (OutputStream os = p.getOutputStream()) {
-            os.write(json.getBytes(StandardCharsets.UTF_8));
-        }
-        String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        int code = p.waitFor();
-        if (code != 0) throw new IOException("gh api (stdin) failed: " + out);
-        return out.trim();
     }
 
     private static String runProcess(String[] cmd) throws IOException, InterruptedException {
