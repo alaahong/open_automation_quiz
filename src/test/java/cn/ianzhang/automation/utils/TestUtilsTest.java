@@ -24,7 +24,7 @@ class TestUtilsTest {
 
     @Test
     void positiveVerificationReturnsFalseForNegativeNumber2() {
-        assertFalse(TestUtils.positiveVerification(1-3));
+        assertFalse(TestUtils.positiveVerification(1 - 3));
     }
 
     @Test
