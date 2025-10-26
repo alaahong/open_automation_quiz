@@ -1,4 +1,4 @@
-name: CI Copilot Failure Prompt
+name: CI Hugging Face Failure Analyzer
 
 on:
   workflow_run:
@@ -17,10 +17,10 @@ permissions:
   issues: write
 
 jobs:
-  prompt:
+  analyze:
     if: >
       github.event.workflow_run.conclusion != 'success' &&
-      github.event.workflow_run.name != 'CI Copilot Failure Prompt'
+      github.event.workflow_run.name != 'CI Hugging Face Failure Analyzer'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout (shallow)
@@ -99,7 +99,7 @@ jobs:
             echo "No logs were available to download for run ${RUN_ID}." > logs/combined.txt
           fi
 
-      - name: Post PR/Issue comment with Copilot-ready prompt (highlights only)
+      - name: Post PR/Issue comment with Hugging Face analysis (highlights only)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -108,5 +108,10 @@ jobs:
           API_URL: ${{ github.api_url }}
           SERVER_URL: ${{ github.server_url }}
           WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+          # Hugging Face
+          HF_API_TOKEN: ${{ secrets.HF_API_TOKEN }}
+          HF_MODEL: ${{ vars.HF_MODEL || 'meta-llama/Llama-3.2-3B-Instruct' }}
+          ANALYZER_MAX_HIGHLIGHTS: ${{ vars.ANALYZER_MAX_HIGHLIGHTS || '200' }}
+          HF_MAX_NEW_TOKENS: ${{ vars.HF_MAX_NEW_TOKENS || '800' }}
         run: |
-          java scripts/CiCopilotPrompt.java
+          java scripts/HfCiFailureAnalyzer.java
